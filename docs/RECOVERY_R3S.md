@@ -181,10 +181,10 @@ R3SB 보드에서 ROM DFU 진입에 사용한 위치는 **사진 기준 MCU 왼�
 Repository에 recovery 사진을 넣는 경우:
 
 ``` markdown
-![R3SB STM32 ROM DFU recovery pins](docs/assets/r3sb_rom_dfu_pins.png)
+![R3SB STM32 ROM DFU recovery pins](assets/r3sb_rom_dfu_pins.png)
 ```
 
-![R3SB STM32 ROM DFU recovery pins](docs/assets/r3sb_rom_dfu_pins.png)
+![R3SB STM32 ROM DFU recovery pins](assets/r3sb_rom_dfu_pins.png)
 
 사진의 빨간 표시 영역은 **정확한 두 핀에 접근하기 어려웠던 실제 작업
 영역을 표시하기 위한 것**입니다.

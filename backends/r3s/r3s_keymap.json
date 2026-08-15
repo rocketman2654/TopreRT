@@ -1,0 +1,72 @@
+[
+  {
+    "index": 17,
+    "label": "W",
+    "idle_state": 0,
+    "idle_delta": 8,
+    "detected_state": 3,
+    "detected_delta": 2293,
+    "delta_change": 2285,
+    "peak_change": 2285
+  },
+  {
+    "index": 18,
+    "label": "E",
+    "idle_state": 0,
+    "idle_delta": 19,
+    "detected_state": 3,
+    "detected_delta": 2325,
+    "delta_change": 2306,
+    "peak_change": 2310
+  },
+  {
+    "index": 19,
+    "label": "R",
+    "idle_state": 0,
+    "idle_delta": 16,
+    "detected_state": 3,
+    "detected_delta": 2096,
+    "delta_change": 2080,
+    "peak_change": 2202
+  },
+  {
+    "index": 30,
+    "label": "A",
+    "idle_state": 0,
+    "idle_delta": 16,
+    "detected_state": 3,
+    "detected_delta": 1992,
+    "delta_change": 1976,
+    "peak_change": 1981
+  },
+  {
+    "index": 31,
+    "label": "S",
+    "idle_state": 0,
+    "idle_delta": 13,
+    "detected_state": 3,
+    "detected_delta": 2107,
+    "delta_change": 2094,
+    "peak_change": 2095
+  },
+  {
+    "index": 32,
+    "label": "D",
+    "idle_state": 0,
+    "idle_delta": 7,
+    "detected_state": 3,
+    "detected_delta": 2319,
+    "delta_change": 2312,
+    "peak_change": 2313
+  },
+  {
+    "index": 60,
+    "label": "Space",
+    "idle_state": 0,
+    "idle_delta": 1,
+    "detected_state": 3,
+    "detected_delta": 1427,
+    "delta_change": 1426,
+    "peak_change": 1426
+  }
+]

@@ -1,0 +1,27 @@
+# Generated firmware and manifests
+output/*
+!output/.gitkeep
+*.rfb
+*.hfb
+*.bin
+*.hex
+*.dfu
+*.manifest.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs / captures / dumps
+*.log
+*.pcap
+*.pcapng
+*.dump

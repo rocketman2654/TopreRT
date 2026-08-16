@@ -796,12 +796,11 @@ class UnifiedGUI(tk.Tk):
 
         def work():
             hid = HHE.load_hid()
-            rows = []
-            for d in hid.enumerate(HHE.VID, HHE.PID_NORMAL):
-                p = d["path"]
-                ps = p.decode(errors="ignore") if isinstance(p, bytes) else str(p)
-                if d.get("interface_number") == 2 or "mi_02" in ps.lower():
-                    rows.append(d)
+            # Use the same HHKB enumeration policy as Detect/Writer.
+            # A connected HHKB can expose any supported PID in HHE.PIDS;
+            # restricting Observer to PID_NORMAL (0x0021) makes a valid
+            # wired-mode device invisible to the Observer.
+            rows = HHE.enum_vendor(hid)
             if len(rows) != 1:
                 raise HHE.Reject(f"Expected one HHKB MI_02, found {len(rows)}")
 
@@ -928,7 +927,17 @@ class UnifiedGUI(tk.Tk):
                 self.q.put(("log", "Quality is a sampling-density heuristic, not a firmware pass/fail grade."))
                 self.q.put(("log", f"Observer stopped — {transitions} transitions"))
                 self.q.put(("observer_off", None))
-        self._worker(work)
+        def guarded_work():
+            try:
+                work()
+            except Exception:
+                # work() only posts observer_off from its inner device-session
+                # finally block.  Failures during enumeration/open_path happen
+                # before that block, so explicitly restore the Observer UI.
+                self.q.put(("observer_off", None))
+                raise
+
+        self._worker(guarded_work)
 
     def stop_observer(self):
         if self.platform.get() == PLAT_R3S:
@@ -942,7 +951,12 @@ class UnifiedGUI(tk.Tk):
                     proc.terminate()
         else:
             self.stop_event.set()
-            self.observer_state.set("Stopping...")
+            if self.worker is not None and self.worker.is_alive():
+                self.observer_state.set("Stopping...")
+            else:
+                self.observer_state.set("Observer idle")
+                self.obs_start.configure(state="normal")
+                self.obs_stop.configure(state="disabled")
 
     # ---------------- Recovery / tests ----------------
     def recovery_action(self):

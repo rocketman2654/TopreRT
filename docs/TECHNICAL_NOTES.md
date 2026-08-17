@@ -1,42 +1,33 @@
 # Technical Notes
 
+In the REALFORCE R3S research, key-related data—including `base`, `cur`, `delta`, and calibration values—alongside stock state thresholds were directly observed. Testing confirmed that `delta` updates continuously in response to physical key movement.
 
-R3S 연구에서는 key별 `base`, `cur`, `delta`, calibration 관련 값과 여러
-stock threshold가 관찰되었고, `delta`가 키 이동에 따라 연속적으로
-변화하는 것을 확인했습니다.
+Rather than completely replacing the stock state machine, the Rapid Trigger (RT) implementation uses a runtime anchor to measure relative movement from the extreme point corresponding to the most recent movement direction.
 
-RT 구현은 stock state machine을 통째로 교체하지 않고 runtime anchor를
-이용해 최근 이동 방향의 극점으로부터 상대 이동량을 판정하는 방식으로
-구성했습니다.
+Following the initial implementation of RT on the R3S, sensitivity thresholds and stale-anchor edge cases were iteratively refined.
 
-R3S에서 최초 RT 성공 후 민감도와 stale-anchor 문제를 단계적으로
-다듬었고, 현재 안정판 후보는:
+The current stable release candidate settings are:
 
-``` text
-Release 0.60 mm / Re-press 0.80 mm
-Non-Space two-pass DISARM64
-Space NO-DISARM
-```
+* **Release:** `0.60 mm`
+* **Re-press:** `0.80 mm`
+* **Non-Space Keys:** Two-pass `DISARM64`
+* **Spacebar:** `NO-DISARM`
 
-입니다.
+On the HHKB, mid-stroke RT functionality was likewise confirmed on physical hardware using separate telemetry and runtime state mechanics.
 
-HHKB에서도 별도의 telemetry와 runtime state를 이용해 mid-stroke RT가
-성립함을 실제 하드웨어에서 확인했습니다.
+---
 
-------------------------------------------------------------------------
+## Development Philosophy
 
-## 20. 개발 철학
-
-1.  **Stock behavior를 가능한 한 보존한다.**
-2.  지원하지 않는 firmware는 추측해서 패치하지 않는다.
-3.  GUI가 실수해도 backend가 다시 차단한다.
-4.  공식 update 경로를 사용할 수 있으면 공식 경로를 우선한다.
-5.  특정 GUI 버전이 없으면 firmware를 사용할 수 없는 구조를 피한다.
-6.  Read-only telemetry와 실제 write 동작을 명확히 분리한다.
-7.  Hardware-verified와 binary-verified를 구분한다.
-8.  Recovery path는 준비하되 위험한 low-level 기능을 일반 사용자 UI에
-    무분별하게 노출하지 않는다.
-9.  복구에서는 **write보다 backup이 먼저**다.
-10. 관찰한 사실과 내부 구조에 대한 추정을 문서에서 구분한다.
+1. **Preserve stock behavior** as much as possible.
+2. **Do not speculate** or patch firmware revisions that are not officially supported.
+3. **Fail-closed validation:** Even if the GUI passes an input, the backend must independently enforce safety blocks.
+4. **Prefer official vendor tools:** When an official update path is available, prioritize it over custom flasher tools.
+5. **Decoupled execution:** Avoid designs where patched firmware requires a specific GUI version to function.
+6. **Isolate telemetry:** Strictly separate read-only telemetry operations from flash write mechanisms.
+7. **Transparent verification:** Explicitly distinguish between *hardware-verified* and *binary-verified* states.
+8. **Protected recovery:** Document recovery paths, but do not expose low-level flashing/recovery tools in general user flows.
+9. **Mandatory backup:** During recovery procedures, reading and backing up flash precedes writing.
+10. **Objective reporting:** Clearly distinguish observed empirical facts from reverse-engineering assumptions in all documentation.
 
 ------------------------------------------------------------------------

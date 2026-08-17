@@ -1,55 +1,49 @@
 # REALFORCE R3S Recovery Guide
 
 
-이 절은 **정상적인 stock rollback부터 soft failure, hard brick까지**의
-복구 경로를 한곳에 정리합니다.
+This section consolidates the recovery paths for the REALFORCE R3S, covering everything from **a normal stock rollback to soft failure and hard brick**.
 
-가장 중요한 원칙:
+The most important principle is:
 
-> **REALFORCE Software에서 키보드가 사라졌다는 이유만으로 즉시 hard
-> brick으로 판정하지 마세요.**
+> **Do not immediately assume a hard brick just because the keyboard has disappeared from REALFORCE Software.**
 
-실제로 확인된 soft failure에서는 REALFORCE Software가 장치를 찾지
-못했지만 Windows HID vendor interface는 살아 있었고, E0 명령을 직접
-전송한 뒤에야 B0.01 updater firmware로 재열거되어 공식 앱에서 다시
-인식되었습니다.
+In an actually confirmed soft-failure case, REALFORCE Software could not detect the device, but the Windows HID vendor interface was still alive. Only after directly sending the E0 command did the keyboard re-enumerate with the B0.01 updater firmware, allowing the official software to recognize it again.
 
 ------------------------------------------------------------------------
 
-## 12.1 Recovery Level 0 - 정상 rollback
+## 12.1 Recovery Level 0 - Normal Rollback
 
-REALFORCE Software가 키보드를 정상 인식한다면 가장 먼저 공식 updater로
-exact stock A0.12를 다시 설치합니다.
+If REALFORCE Software recognizes the keyboard normally, the first step is to reinstall the **exact stock A0.12** firmware using the official updater.
 
-하드웨어 분해는 필요하지 않습니다.
+No hardware disassembly is required.
 
 ------------------------------------------------------------------------
 
-## 12.2 Recovery Level 1 - REALFORCE Software에서는 사라졌지만 USB/HID는 살아 있음
+## 12.2 Recovery Level 1 - Missing from REALFORCE Software but USB/HID Still Alive
 
-이 상태는 **hard brick이라고 단정할 수 없습니다.**
+This state ***should not automatically be considered a hard brick**.
 
-R3SB에서 실제로 확인된 recovery helper:
+The recovery helper actually confirmed on an R3SB was:
 
 ``` text
 recovery\r3s\r3sb_e0_probe.py
 ```
 
-필요 패키지:
+Required package:
 
 ``` powershell
 py -m pip install hidapi
 ```
 
-먼저 **read-only discovery**만 실행합니다.
+First, **run read-only discovery**:
 
 ``` powershell
 py .\r3sb_e0_probe.py
 ```
 
-이 모드에서는 USB 명령을 보내지 않습니다.
+This mode does not send any USB commands.
 
-실험한 R3SB31의 normal application에서 관찰된 descriptor는:
+The descriptor observed on an R3SB31 running the normal application was:
 
 ``` text
 VID              0853
@@ -57,39 +51,23 @@ PID              0311
 vendor interface 2
 ```
 
-였습니다.
-
-> \[!IMPORTANT\] `0853:0311`, interface `2`는 **Windows가 임의로 이
-> PC에만 부여한 장치 경로가 아닙니다.** VID/PID와 USB
-> `bInterfaceNumber`는 장치 firmware/USB descriptor에서 제공되는
-> 값이므로 같은 firmware/configuration의 같은 장치 계열에서는 일반적으로
-> 동일해야 합니다.
+> IMPORTANT: `0853:0311` and interface `2` are not values arbitrarily assigned by Windows to this particular PC. The VID/PID and USB `bInterfaceNumber` are provided by the device firmware/USB descriptor, so they should generally remain the same for the same device family running the same firmware/configuration.
 >
-> 반대로 HID `path` 문자열, 장치 인스턴스 경로, 포트 위치 등은 PC/USB
-> 포트/열거 시점에 따라 달라질 수 있으므로 문서나 코드에서 고정값으로
-> 사용하면 안 됩니다.
+> In contrast, the HID `path` string, device instance path, physical port location, and similar values may vary depending on the PC, USB port, and enumeration state. These must therefore not be hard-coded in documentation or code.
 >
-> 또한 다른 R3S 모델, 다른 firmware mode, B0.01 updater mode까지 동일
-> PID/interface를 사용한다고 **추정해서는 안 됩니다.** Recovery helper는
-> 실제 enumerate 결과를 먼저 보여주고, 예상 interface가 정확히 하나일
-> 때만 E0 전송을 허용하는 fail-closed 방식으로 사용해야 합니다.
+> Also, you should not assume that other R3S models, different firmware modes, or B0.01 updater mode use the same PID/interface. The recovery helper should first display the actual enumeration results and should only permit E0 transmission when exactly one matching interface is found, following a fail-closed design.
 
-실제 R3SB31 capture에서 vendor updater command를 운반한 interface는
-`interface 2`였으며, 당시 endpoint는 OUT `0x04`, IN `0x83`으로
-관찰되었습니다. 현재 helper는 HIDAPI의 enumerated path를 사용하므로
-Windows의 물리 USB 포트 번호를 하드코딩하지 않습니다.
+In the actual R3SB31 capture, the vendor updater command was carried over `interface 2`, with OUT endpoint `0x04` and IN endpoint `0x83` observed at the time. The current helper uses the HIDAPI-enumerated path, so it does not hard-code the physical USB port number used by Windows.
 
-### E0 강제 진입
+### Forced E0 Entry
 
-read-only discovery에서 자신의 R3SB31임을 확인한 경우에만:
+Only if the read-only discovery confirms that the device is your R3SB31, run:
 
 ``` powershell
 py .\r3sb_e0_probe.py --send
 ```
 
-를 사용합니다.
-
-helper가 보내는 것은 **E0 RebootForUpdate 한 개뿐**입니다.
+The helper sends only one E0 RebootForUpdate command.
 
 ``` text
 Request prefix:
@@ -99,7 +77,7 @@ Expected ACK prefix:
 55 55 E0 00 00 ...
 ```
 
-이 helper에는 다음이 구현되어 있지 않습니다.
+The helper does not implement any of the following:
 
 -   E1 StartUpdate
 -   E2 firmware chunks
@@ -108,21 +86,17 @@ Expected ACK prefix:
 -   flash write
 -   custom RFB transfer
 
-즉 E0 helper 자체가 A0.12를 덮어쓰는 프로그램은 아닙니다.
+In other words, the E0 helper itself is not a program that overwrites A0.12.
 
-정상적인 E0 ACK가 오면 키보드는 disconnect 후 updater mode로
-re-enumerate되어야 합니다.
+If a valid E0 ACK is received, the keyboard should disconnect and re-enumerate in updater mode.
 
-실제 soft-failure 복구에서는 이 과정을 거친 뒤 REALFORCE Software에서:
+In the actual soft-failure recovery, after this process the keyboard appeared in REALFORCE Software as:
 
 ``` text
 FW Version B0.01
 ```
 
-로 다시 장치가 나타났습니다.
-
-그 상태에서 공식 REALFORCE Software를 이용해 exact stock **A0.12**를
-다시 설치하고 정상 복귀를 확인했습니다.
+At that point, the official REALFORCE Software was used to reinstall the exact stock A0.12 firmware and normal operation was restored.
 
 ``` text
 A0.12 application failure
@@ -148,37 +122,32 @@ normal operation
 
 ------------------------------------------------------------------------
 
-## 12.3 언제 Hard Brick으로 의심할 것인가
+## 12.3 When to Suspect a Hard Brick
 
-다음은 더 심각한 상태입니다.
+The following indicates a more serious condition:
 
--   REALFORCE Software에서 장치가 없음
--   Windows에서 정상 R3S USB/HID enumeration 자체가 없음
--   E0 helper가 명령을 보낼 vendor HID target을 찾지 못함
--   케이블/포트/전원 재확인 후에도 동일
+-   The device is missing from REALFORCE Software
+-   Normal R3S USB/HID enumeration does not occur in Windows
+-   The E0 helper cannot find a vendor HID target to send the command to
+-   The same behavior persists after rechecking the cable, USB port, and power
 
-이 경우 application-level recovery 명령을 보낼 USB endpoint 자체가
-없으므로 **STM32 ROM DFU recovery가 필요한 hard-brick 후보**입니다.
+In this case, there is no USB endpoint available for application-level recovery commands, making it **a hard-brick candidate requiring STM32 ROM DFU recovery**.
 
-> \[!WARNING\] 아래 절차는 R3SB 실기에서 사용한 최후 수단입니다.
-> R3SA/R3SC/R3SD의 PCB layout 및 동일 접점은 아직 검증되지 않았습니다.
-> 다른 모델에서 위치를 추정해 쇼트하지 마세요.
+> **WARNING!**: The procedure below was used as a last resort on an R3SB unit. The PCB layout and corresponding contact points for R3SA/R3SC/R3SD have not been verified. Do not short pins based on assumed locations on other models.
 
 ------------------------------------------------------------------------
 
 ## 12.4 Recovery Level 2 - STM32 ROM DFU
 
-실기 대상 MCU:
+The MCU on the actual device was:
 
 ``` text
 STM32L072RBT6
 LQFP64
 ```
+On the R3SB board, the location used to enter ROM DFU was **the 1st and 4th pins counted from the bottom on the left side of the MCU, as viewed in the photograph**.
 
-R3SB 보드에서 ROM DFU 진입에 사용한 위치는 **사진 기준 MCU 왼쪽 변의
-아래쪽에서 세었을 때 1번째 핀과 4번째 핀**입니다.
-
-Repository에 recovery 사진을 넣는 경우:
+If recovery photos are included in the repository:
 
 ``` markdown
 ![R3SB STM32 ROM DFU recovery pins](assets/r3sb_rom_dfu_pins.png)
@@ -186,101 +155,85 @@ Repository에 recovery 사진을 넣는 경우:
 
 ![R3SB STM32 ROM DFU recovery pins](assets/r3sb_rom_dfu_pins.png)
 
-사진의 빨간 표시 영역은 **정확한 두 핀에 접근하기 어려웠던 실제 작업
-영역을 표시하기 위한 것**입니다.
+The red highlighted area in the photograph is intended to show **the actual working area where accessing the exact two pins was difficult**.
 
-> \[!CAUTION\] 주변 핀 전체를 무작정 단락하는 것은 권장 절차가 아닙니다.
-> 실제 복구에서는 좁은 pitch 때문에 드라이버로 주변 접점까지 함께
-> 접촉하는 시행착오가 있었지만, 공개 절차의 목표는 가능한 한 **왼쪽 아래
-> 1번/4번 대상 핀만 정확히 접촉**하는 것입니다. 잘못된 핀을 단락하면
-> MCU나 보드에 추가 손상을 줄 수 있습니다.
+> **CAUTION!**: Randomly shorting an entire group of nearby pins is not a recommended procedure. During the actual recovery, there was some trial and error due to the narrow pitch, including accidental contact with surrounding pads. However, the goal of the documented procedure is to contact only the exact pins 1 and 4 on the lower-left side as precisely as possible. Shorting the wrong pins may cause additional damage to the MCU or board.
 
-과거 기록에서는 이 hardware intervention 과정에서 Windows USB
-disconnect/reconnect 변화가 관찰되었고, 이후 STM32 ROM DFU에 접근할 수
-있었습니다.
+Historical records show that Windows USB disconnect/reconnect changes were observed during the hardware intervention, after which STM32 ROM DFU became accessible.
 
 ------------------------------------------------------------------------
 
-## 12.5 ROM DFU 진입 후 가장 먼저 할 일: 전체 flash 백업
+## 12.5 First Step After Entering ROM DFU: Back Up the Entire Flash
 
-**바로 erase/write하지 마세요.**
+**Do not immediately erase or write anything.**
 
-실제 복구에서는 먼저 STM32L072RBT6의 전체 128 KiB flash를 읽어 백업했고,
-반복 dump SHA-256이 동일한지 확인했습니다.
+During the actual recovery, the entire **128 KiB flash** of the STM32L072RBT6 was first read and backed up.
+Repeated dumps were then compared to confirm that their SHA-256 hashes matched.
 
-기록된 동일 dump SHA-256:
+The SHA-256 of the matching dumps was:
 
 ``` text
 588CD32B79CAC0D318A3CD9182B71F7C0C6778C2193F030F80515874B49AD020
 ```
 
-이 값은 당시 해당 실기에서 얻은 dump 식별값이지, 모든 R3S에서 반드시
-같아야 하는 universal stock hash라는 의미는 아닙니다.
+This value is an identification hash for the dump obtained from that particular physical device. It does **not** mean that every R3S must have this universal stock hash.
 
-복구 기본 원칙:
+Basic recovery principle:
 
 ``` text
-1. DFU 진입 확인
-2. 전체 flash READ
-3. 백업 파일 보존
-4. 가능하면 반복 dump
-5. dump hash 비교
-6. 그 다음에만 application recovery 검토
+1. Confirm DFU mode
+2. READ the entire flash
+3. Preserve the backup file
+4. Repeat the dump if possible
+5. Compare the dump hashes
+6. Only then consider application recovery
 ```
 
 ------------------------------------------------------------------------
 
 ## 12.6 A0.12 application recovery
 
-실제 복구에서는 순정 RFB에서 64 KiB application payload를 추출했습니다.
+During the actual recovery, a 64 KiB application payload was extracted from the stock RFB.
 
-기록된 파일:
+Recorded file:
 
 ``` text
 R3SB_A012_RECOVERY_08010000.bin
 ```
 
-기록된 application load address:
+Recorded application load address:
 
 ``` text
 0x08010000
 ```
 
-기록된 recovery payload SHA-256:
+Recorded recovery payload SHA-256:
 
 ``` text
 58b52fe0e63a2d0c1e724dc21b9304d4eee6c6298fb8e4cce8bad3f704124291
 ```
 
-당시 준비한 STM32CubeProgrammer CLI write 형태:
+The STM32CubeProgrammer CLI write command prepared at the time was:
 
 ``` powershell
 STM32_Programmer_CLI.exe -c port=USB1 -w ".\R3SB_A012_RECOVERY_08010000.bin" 0x08010000 -v
 ```
 
-> \[!DANGER\] **Mass erase를 기본 복구 절차로 사용하지 마세요.** 실제
-> 복구는 전체 flash를 먼저 보존한 뒤, 확인된 application 영역
-> `0x08010000`에 필요한 application image만 기록하는 방향으로
-> 진행했습니다. boot/recovery 영역을 불필요하게 지우지 않는 것이
-> 핵심입니다.
+> **DANGER!**: **Do not use Mass Erase as the default recovery procedure.** The actual recovery preserved the entire flash first and then wrote only the necessary application image to the confirmed application region at `0x08010000`. Avoiding unnecessary erasure of the boot/recovery region is critical.
 
-당시 보존 기록에서 확실하게 확인되는 것은:
+The following were definitively confirmed in the preserved recovery records:
 
--   ROM DFU 진입
--   128 KiB 전체 flash backup
--   반복 dump hash 확인
--   64 KiB recovery application 추출
--   `0x08010000` load address 확인
--   recovery image hash 확인
--   이후 동일 키보드가 다시 stock rollback과 TopreRT 실기 테스트를
-    수행할 수 있는 상태로 복귀
+-   ROM DFU entry
+-   Full 128 KiB flash backup
+-   Verification of repeated dump hashes
+-   Extraction of the 64 KiB recovery application
+-   Confirmation of the `0x08010000` load address
+-   Verification of the recovery image hash
+-   The same keyboard subsequently returned to a state where stock rollback and TopreRT hardware testing could be performed
 
-입니다.
+The exact final verification message from STM32CubeProgrammer was not preserved, so the documentation does not fabricate or reconstruct it.
 
-당시 STM32CubeProgrammer의 최종 verify 콘솔 문구 자체는 보존되어 있지
-않으므로 문서에서 임의로 재현하지 않습니다.
-
-### Recovery golden rule
+### Recovery Golden Rule
 
 ``` text
 READ & BACK UP FIRST
@@ -296,19 +249,19 @@ CHECK NORMAL USB/HID ENUMERATION
 
 ------------------------------------------------------------------------
 
-## USB identification notes USB 식별값에 대한 주의
+## USB Identification Notes
 
-Recovery code에서 가장 혼동하기 쉬운 부분입니다.
+This is one of the easiest parts of the recovery process to misunderstand.
 
-### 일반적으로 장치 쪽에서 정해지는 값
+### Values Generally Defined by the Device
 
 -   USB VID
 -   USB PID
--   USB interface descriptor의 `bInterfaceNumber`
--   usage page / usage
--   endpoint descriptor
+-   USB interface descriptor `bInterfaceNumber`
+-   Usage Page / Usage
+-   Endpoint Descriptor
 
-따라서 R3SB31 A0.12에서 관찰한:
+Therefore, the following values observed on an R3SB31 running A0.12:
 
 ``` text
 VID 0853
@@ -316,27 +269,25 @@ PID 0311
 interface 2
 ```
 
-는 단순히 "이 PC가 우연히 준 번호"로 보기는 어렵습니다.
+should not be treated simply as numbers that were randomly assigned by the PC.
 
-### PC마다 달라질 수 있는 값
+### Values That May Vary Between PCs
 
 -   HID device path
 -   Windows device instance path
 -   USB hub/port topology
--   열거 순서
--   HIDAPI가 반환하는 배열 순서
+-   Enumeration Order
+-   HIDAPI array ordering
 
-따라서 recovery tool은 `[0]`, `[1]` 같은 enumerate 순서나 특정 `path`
-문자열을 영구적으로 하드코딩해서는 안 됩니다.
+Therefore, the recovery tool should not permanently hard-code `[0]`, `[1]`, or a specific `path` string based on enumeration order.
 
-현재 E0 probe는 VID/PID로 enumerate한 뒤 `interface_number`를 확인하고,
-해당 interface가 **정확히 하나**일 때만 `--send`를 허용합니다.
+The current E0 probe enumerates devices by VID/PID, checks the `interface_number`, and only permits `--send` when exactly one matching interface is found.
 
-향후 공개판에서는 가능하면 추가로 다음을 함께 검증하는 것이 좋습니다.
+For a future public release, it would be preferable to additionally verify:
 
 -   manufacturer = `Topre`
 -   product/model signature
--   read-only DeviceInfo response가 가능한 경우 model field
--   normal app / updater mode를 서로 구분할 수 있는 signature
+-   a model field from a read-only DeviceInfo response, if available
+-   a signature that can distinguish normal application mode from updater mode
 
 ------------------------------------------------------------------------

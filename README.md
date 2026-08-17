@@ -1,7 +1,7 @@
 # TopreRT
 **Rapid Trigger toolkit for REALFORCE R3S and HHKB Professional Hybrid / Hybrid Type-S**
 
-TopreRT is an unofficial toolkit that adds **Rapid Trigger (RT)** behavior to Topre keyboards while preserving the stock sensor and state-machine behavior as closely as possible. It combines firmware generation, validation, live diagnostics, and recovery guidance into a single project.
+TopreRT is an unofficial toolkit that leverages the continuous capacitive sensing of Topre switches—specifically on REALFORCE and HHKB models—to enable **Rapid Trigger (RT)** dynamic actuation while preserving stock sensor processing. It delivers an end-to-end workflow for Topre Rapid Trigger, covering firmware patching, validation, live diagnostics, and recovery guidance.
 
 > **Warning:** Custom firmware always carries a risk of boot failure or bricking. Keep an exact stock firmware image for your device, use a stable USB connection, and **never disconnect the keyboard or suspend/reboot your PC** during an update.
 

@@ -1,70 +1,70 @@
 # TopreRT
-
 **Rapid Trigger toolkit for REALFORCE R3S and HHKB Professional Hybrid / Hybrid Type-S**
 
-TopreRT is an unofficial toolkit that adds **Rapid Trigger (RT)** behavior while preserving the stock Topre sensor/state-machine behavior as much as possible. It combines firmware generation, validation, live diagnostics, and recovery guidance in one project.
+TopreRT is an unofficial toolkit that adds **Rapid Trigger (RT)** behavior to Topre keyboards while preserving the stock sensor and state-machine behavior as closely as possible. It combines firmware generation, validation, live diagnostics, and recovery guidance into a single project.
 
-> [!WARNING]
-> Custom firmware always carries a risk of boot failure or recovery work. Keep an exact stock firmware image for your device, use stable USB power, and never disconnect the keyboard or suspend/reboot the PC during an update.
+> **Warning:** Custom firmware always carries a risk of boot failure or bricking. Keep an exact stock firmware image for your device, use a stable USB connection, and **never disconnect the keyboard or suspend/reboot your PC** during an update.
 
-> [!IMPORTANT]
-> TopreRT is not affiliated with PFU Limited, REALFORCE, or HHKB. **Stock firmware and pre-patched firmware are not distributed in this repository.**
+> **Important:** TopreRT is not affiliated with PFU Limited, REALFORCE, or HHKB. Stock firmware and pre-patched firmware binaries are **not** distributed in this repository.
 
-## Project status
+---
 
-| Device | Firmware | RT core | Observer / writer |
-| --- | --- | --- | --- |
-| REALFORCE R3SB | A0.12 | **Hardware verified** | **Hardware verified** |
-| REALFORCE R3SA / R3SC / R3SD | A0.12 | Binary verified | Observer key map not hardware validated |
-| HHKB Professional Hybrid / Hybrid Type-S PD-KB800W | A0.48 | **Hardware verified** | **Hardware verified** |
+## Project Status
 
-R3S exact stock SHA-256 values and model-specific validation details are documented in [`backends/r3s/SUPPORTED_FIRMWARE.md`](backends/r3s/SUPPORTED_FIRMWARE.md).
+| Device | Firmware | RT Core | Observer / Writer |
+|---|---|---|---|
+| **REALFORCE R3S** (R3SB) | A0.12 | Hardware verified | Hardware verified |
+| **REALFORCE R3S** (R3SA / R3SC / R3SD) | A0.12 | Binary verified | Observer key map not hardware validated |
+| **HHKB Professional Hybrid / Hybrid Type-S** (PD-KB800W) | A0.48 | Hardware verified | Hardware verified |
+
+*Exact stock SHA-256 values and model-specific validation details for the R3S are documented in [`backends/r3s/SUPPORTED_FIRMWARE.md`](backends/r3s/SUPPORTED_FIRMWARE.md).*
+
+---
 
 ## Highlights
 
-- All-key Rapid Trigger core
-- Adjustable release / re-press distance
-- Exact-image SHA-256 validation and fail-closed patching
-- GUI validation plus independent backend validation
-- R / E / W / A / S / D / SPACE live Observer
-- R3S read-only C5 telemetry
-- HHKB built-in writer with packet ACK and reconnect checks
-- Output manifest generation
-- Documented R3SB soft-recovery and STM32 ROM DFU recovery path
+* **All-key Rapid Trigger core** with adjustable release and re-press distances.
+* **Exact-image SHA-256 validation** and fail-closed patching logic.
+* **Dual-layer validation:** GUI-level checks backed by independent backend validation.
+* **Live Observer interface** for real-time key testing (`WASD`, `Space`, `R`, `E`).
+* **Read-only C5 telemetry** for REALFORCE R3S.
+* **Built-in HHKB flash writer** with packet ACK verification and reconnect checks.
+* **Automated output manifest generation.**
+* **Documented recovery paths:** Soft-recovery guidance and STM32 ROM DFU hardware recovery for R3SB.
+
+---
 
 ## Requirements
 
-- Windows 10 / 11
-- Python 3.10+
-- Windows Python Launcher (`py`)
-- `hidapi`
-- Tkinter (included with normal Windows Python installations)
+* **OS:** Windows 10 / 11
+* **Python:** 3.10+ (with Windows Python Launcher `py`)
+* **Libraries:** `hidapi`, `Tkinter` (included with standard Windows Python installers)
 
-Install the Python dependency:
+Install dependencies using:
 
 ```powershell
 py -m pip install -r requirements.txt
 ```
-
 ## Quick start
 
 1. Clone or download this repository.
-2. Double-click `Start_TopreRT_GUI.bat`, or run:
+2. Launch the application by double-clicking `Start_TopreRT_GUI.bat`, or running:
 
 ```powershell
 py .\toprert_unified_gui.py
 ```
 
-3. Select `REALFORCE R3S` or `HHKB Professional Hybrid`.
-4. Select the **exact stock firmware** for your device. TopreRT does not trust the filename; the image must pass SHA-256 and structural validation.
-5. Choose a preset or custom Release / Re-press values.
-6. Build the validated output.
+3. Select your device model `REALFORCE R3S` or `HHKB Professional Hybrid`.
+4. Select your **exact stock firmware file**. (TopreRT verifies the file using SHA-256 and structural analysis rather than relying on the filename).
+5. Select a preset or set custom Release / Re-press threshold values.
+6. Build the validated output firmware.
+7. Flashing your device:
 
-For REALFORCE R3S, use the **official REALFORCE Software** for normal firmware updating. TopreRT intentionally does not act as the general R3S flash writer.
+    REALFORCE R3S: Use the **official REALFORCE Software** to flash the built image. TopreRT does not act as a flasher for R3S devices.
 
-For supported HHKB firmware, the built-in writer performs candidate revalidation, device-identity preflight, E0/E1/E2/E3 update sequencing, per-packet ACK checking, and reconnect verification.
+    HHKB: Use the built-in TopreRT writer, which performs candidate revalidation, device-identity preflight, `E0/E1/E2/E3` update sequencing, per-packet ACK checking, and reconnect verification.
 
-## Stable profiles
+## Stable Profiles
 
 ### REALFORCE R3S
 
@@ -78,7 +78,7 @@ Space #60   = NO-DISARM
 Scope       = all keys
 ```
 
-General keys have been hardware-tested for mid-stroke release/re-press and full-release re-entry without runaway input. Development records still contain a **rare Space missed-press candidate**, so this should not be described as completely eliminated.
+General keys have been hardware-tested for mid-stroke release/re-press and full-release re-entry without runaway input. A rare Space bar missed-press candidate remains in development logs and is not yet completely eliminated.
 
 ### HHKB
 
@@ -87,48 +87,44 @@ General keys have been hardware-tested for mid-stroke release/re-press and full-
 | Stable | ~0.10 mm | ~0.15 mm | 60 / 90 |
 | Golden | ~0.053 mm | ~0.053 mm | 32 / 32 |
 
-HHKB millimeter values are **estimated conversions** from the measured raw span; they do not imply a perfectly linear sensor across the entire stroke.
+*Millimeter values are **estimated conversions** based on the measured raw span; they do not imply a perfectly linear sensor response across the entire key stroke.*
 
-## Safety model
+## Safety Model
 
-TopreRT rejects unsupported or malformed input rather than guessing. Validation includes exact source hashes, CRC/layout checks, patch whitelists, helper structure checks, and device/update checks where applicable.
+TopreRT rejects unsupported or malformed inputs rather than attempting to guess patches. Safety mechanics include:
 
-The project follows these rules:
-
-1. Preserve stock behavior where possible.
-2. Never guess patches for unsupported firmware.
-3. Validate again in the backend even if the GUI already passed.
-4. Prefer official update paths where available.
-5. Separate read-only telemetry from write operations.
-6. Distinguish hardware-verified from binary-verified results.
-7. Keep dangerous low-level recovery functions out of the normal user flow.
-8. **Back up before writing during recovery.**
-9. Distinguish observed behavior from reverse-engineering inference.
+- Preserve stock behavior wherever possible.
+- Never guess patches for unsupported firmware revisions.
+- Re-validate in the backend even if the GUI check passed.
+- Prefer official vendor update utility paths where available.
+- Isolate telemetry: Keep read-only telemetry separate from flash writing operations.
+- Strict verification states: Explicitly distinguish hardware-verified from binary-verified states.
+- Protect recovery tools: Keep low-level recovery features out of standard user workflows.
+- Mandatory backup: Read and back up existing flash memory before recovery writes.
+- Factual reporting: Distinguish observed hardware behavior from reverse-engineering inferences.
 
 ## Recovery
 
-Do **not** assume that a keyboard missing from REALFORCE Software is hard-bricked. An R3SB soft-failure was recovered while its vendor HID interface was still alive by sending only the E0 `RebootForUpdate` command and then using the official updater.
+If your keyboard is no longer recognized by vendor software (e.g., REALFORCE Software), it is not necessarily hard-bricked. An R3SB soft-failure state was successfully recovered while its vendor HID interface was still responsive by sending an `E0 RebootForUpdate` command and using the official vendor updater.
 
-The included helper defaults to read-only discovery:
+Run the read-only discovery tool first:
 
 ```powershell
 py .\recovery\r3s\r3sb_e0_probe.py
 ```
 
-Only after confirming the enumerated target is the expected R3SB31 should `--send` be considered. The helper implements **E0 only**; it does not implement E1/E2/E3, flash erase, or firmware transfer.
+  Caution: Only append the `--send` flag after confirming that the enumerated target matches your target `R3SB31`. This helper only issues the `E0` command—it does not implement `E1/E2/E3` flashing sequence steps or mass erase functions.
 
-If normal USB/HID enumeration is completely absent, see the R3SB-only ROM DFU documentation. **Do not mass-erase first. Read and back up the complete flash before any write.**
-
-See **[R3S Recovery Guide](docs/RECOVERY_R3S.md)** for the full procedure and hardware warning.
+If USB/HID enumeration is completely absent, refer to the R3SB-only ROM DFU documentation from **[R3S Recovery Guide](docs/RECOVERY_R3S.md)** for STM32 ROM DFU pin recovery. **Do not perform a mass erase.** Always read and back up the full flash contents before writing.
 
 ## Documentation
 
-- [R3S supported firmware](backends/r3s/SUPPORTED_FIRMWARE.md)
-- [R3S Observer key map](backends/r3s/KEYMAP.md)
-- [R3S recovery guide](docs/RECOVERY_R3S.md)
-- [Technical notes](docs/TECHNICAL_NOTES.md)
+- [R3S Supported Firmware Details](backends/r3s/SUPPORTED_FIRMWARE.md)
+- [R3S Observer Key Map](backends/r3s/KEYMAP.md)
+- [R3S Recovery Guide](docs/RECOVERY_R3S.md)
+- [Technical Notes](docs/TECHNICAL_NOTES.md)
 
-## Repository layout
+## Repository Layout
 
 ```text
 TopreRT/
@@ -151,20 +147,22 @@ TopreRT/
 └─ output/
 ```
 
-## Stock firmware policy
+## Stock Firmware Policy
 
-Official stock firmware, generated TopreRT firmware, recovery application binaries, and device flash dumps are intentionally excluded from the repository. Users should supply their own exact stock image locally; TopreRT only proceeds when it matches the supported whitelist and structural checks.
+To comply with licensing and intellectual property standards: official stock firmware binaries, generated TopreRT firmware images, recovery binaries, and raw flash dumps are **strictly excluded** from this repository.
 
-## Known limitations
+Users must supply their own stock firmware images locally. TopreRT will only process images that pass exact SHA-256 hash whitelisting and structural checks.
 
-- R3S support is currently limited to the exact **A0.12 family**.
-- R3SB is hardware verified; R3SA/R3SC/R3SD are binary verified only.
-- R3SA/R3SC/R3SD Observer physical key maps are not yet hardware validated.
-- A rare R3S Space missed-press candidate remains in development records.
-- HHKB support is currently limited to **PD-KB800W A0.48**.
-- HHKB millimeter values are estimated conversions.
-- HHKB Mac DIP mode is not validated.
-- The R3SB ROM DFU pin procedure must **not** be assumed valid for other R3S PCB layouts.
+## Known Limitations
+
+- R3S support: Currently limited strictly to the **A0.12** family.
+- R3S Hardware verification: R3SB is fully hardware-verified. R3SA, R3SC, and R3SD variants are binary-verified only.
+- R3S Observer maps: Physical key mapping for R3SA / R3SC / R3SD Observer modes is not yet hardware-validated.
+- R3S Spacebar: A rare missed-press edge-case remains under investigation.
+- HHKB support: Currently limited strictly to **PD-KB800W A0.48**.
+- HHKB Measurement precision: Millimeter values are estimated approximations.
+- HHKB macOS DIP switch mode: Not yet validated.
+- R3SB ROM DFU: Pin placement procedures are specific to the R3SB PCB and must **not** be assumed valid for other R3S revisions.
 
 ## License
 
@@ -172,6 +170,6 @@ TopreRT is released under the [MIT License](LICENSE).
 
 ## Disclaimer
 
-TopreRT is unofficial custom-firmware tooling. Firmware modification can cause boot failure, repeated USB re-enumeration, loss of visibility in vendor software, updater-mode entry, or a need for low-level recovery. SHA/CRC/whitelist checks reduce risk but cannot guarantee that every failure mode is impossible.
+TopreRT is an open-source, unofficial firmware modification tool. Modifying keyboard firmware involves inherent risks, including boot loops, endless USB re-enumeration, loss of software detection, or bricking requiring hardware recovery. While SHA/CRC whitelisting and safety checks minimize these risks, they cannot guarantee immunity from failures.
 
-**If in doubt, do not erase anything. Back up first.**
+**If you are uncertain about a step, do not erase your device and make a full backup first.**

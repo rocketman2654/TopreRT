@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 xvlqwz <xvlqwz@users.noreply.github.com>
-// Copyright (C) 2026 rocketman2654 <rocketman2654@users.noreply.github.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 xvlqwz <xvlqwz@users.noreply.github.com>
+# Copyright (C) 2026 rocketman2654 <rocketman2654@users.noreply.github.com>
 
 #!/usr/bin/env python3
 r"""
-TopreRT Unified GUI v0.2
+TopreRT Unified GUI v0.3.0-rc1
 
 One front-end, two frozen backends:
 - REALFORCE R3S A0.12: build/validate here, update with official REALFORCE software
@@ -20,13 +20,14 @@ import importlib
 import json
 import os
 import queue
+import re
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, simpledialog
 
 APP_DIR = Path(__file__).resolve().parent
 R3S_DIR = APP_DIR / "backends" / "r3s"
@@ -40,7 +41,14 @@ import toprert as R3P
 sys.path.insert(0, str(HHKB_DIR))
 import hhkb_toprert_engine_v0_6 as HHE
 
-APP_TITLE = "TopreRT Unified GUI v0.2"
+# v0.13 generic-HOLD custom-slot builder.
+try:
+    import hhkb_v013_generic_hold_builder_v0_1 as HHSLOT
+except ImportError:
+    sys.path.insert(0, str(APP_DIR))
+    import hhkb_v013_generic_hold_builder_v0_1 as HHSLOT
+
+APP_TITLE = "TopreRT Unified GUI v0.3.0-rc1"
 PLAT_R3S = "REALFORCE R3S"
 PLAT_HHKB = "HHKB Professional Hybrid"
 
@@ -65,8 +73,8 @@ class UnifiedGUI(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
-        self.geometry("1010x790")
-        self.minsize(920, 700)
+        self.geometry("1110x980")
+        self.minsize(1000, 820)
 
         self.platform = tk.StringVar(value=PLAT_R3S)
         self.source_path = None
@@ -78,6 +86,19 @@ class UnifiedGUI(tk.Tk):
         self.repress = tk.StringVar()
         self.key = tk.StringVar(value="R")
         self.observer_mode = tk.StringVar(value="Detailed")
+
+        # HHKB v0.13 generic-HOLD custom-slot path.
+        self.hh_slot_baseline_path = None
+        self.hh_slot_baseline_status = tk.StringVar(value="No exact stock A0.48 selected")
+        self.hh_validated_build_path = None
+        self.hh_validated_build_sha = None
+        self.hh_validated_build_report = None
+        self.hh_slot_enabled = []
+        self.hh_slot_source = []
+        self.hh_slot_tap = []
+        self.hh_slot_hold = []
+        self.hh_slot_hold_status = []
+        self.hh_slot_threshold = []
         self._syncing_profile = False
 
         self.source_status = tk.StringVar(value="No firmware selected")
@@ -97,6 +118,7 @@ class UnifiedGUI(tk.Tk):
         self.flash_rate = None
 
         self._build_ui()
+        self._hh_slots_try_bundled_baseline()
         self.release.trace_add("write", self._profile_text_changed)
         self.repress.trace_add("write", self._profile_text_changed)
         self.platform.trace_add("write", self._platform_changed)
@@ -165,8 +187,94 @@ class UnifiedGUI(tk.Tk):
         ).pack(side="left")
         ttk.Label(orow, textvariable=self.observer_state).pack(side="left", padx=(16, 0))
 
-        f3 = ttk.LabelFrame(main, text="3. Safety / activity", padding=7)
-        f3.pack(fill="both", expand=True, pady=(10, 0))
+        # HHKB v0.12 custom-slot panel. Hidden on R3S.
+        self.hh_slots_frame = ttk.LabelFrame(
+            main, text="3. HHKB Dual-Role / Generic HOLD", padding=8
+        )
+
+        info = ttk.Frame(self.hh_slots_frame)
+        info.pack(fill="x")
+        ttk.Label(
+            info,
+            text="Input: exact stock A0.48 · Hold: per-slot · CTRL/LALT/V/SPACE hardware-validated"
+        ).pack(side="left")
+        ttk.Button(info, text="Load A/C/V preset", command=self._hh_slots_load_acv).pack(side="right")
+
+        brow = ttk.Frame(self.hh_slots_frame)
+        brow.pack(fill="x", pady=(6, 6))
+        self.hh_slot_baseline_entry = ttk.Entry(brow, state="readonly")
+        self.hh_slot_baseline_entry.pack(side="left", fill="x", expand=True)
+        ttk.Button(brow, text="Browse stock A0.48...", command=self._hh_slots_browse_baseline).pack(side="left", padx=(8, 0))
+        ttk.Label(self.hh_slots_frame, textvariable=self.hh_slot_baseline_status).pack(anchor="w", pady=(0, 5))
+
+        grid = ttk.Frame(self.hh_slots_frame)
+        grid.pack(fill="x")
+        headers = ["Slot", "Enabled", "Source", "Tap", "Hold", "Threshold [ms]"]
+        for c, text in enumerate(headers):
+            ttk.Label(grid, text=text, font=("Segoe UI", 9, "bold")).grid(
+                row=0, column=c, sticky="w", padx=(0, 8), pady=(0, 3)
+            )
+
+        # LSHIFT source/tap remains blocked because its tap path is not proven.
+        # HOLD uses the generic rev2 engine. Shift/Fn HOLD targets stay blocked until
+        # their modifier/special-key semantics are separately validated.
+        key_values = [k for k in HHSLOT.KEY_MAP.keys() if k != "LSHIFT"]
+        hold_values = [
+            k for k, idx in HHSLOT.KEY_MAP.items()
+            if idx not in HHSLOT.BLOCKED_HOLD
+        ]
+        for i in range(8):
+            en = tk.BooleanVar(value=(i < 3))
+            srcv = tk.StringVar(value=["A", "C", "V"][i] if i < 3 else "A")
+            tapv = tk.StringVar(value=["A", "C", "V"][i] if i < 3 else "A")
+            holdv = tk.StringVar(value="CTRL")
+            holdsv = tk.StringVar(value=HHSLOT.hold_support_status("CTRL"))
+            thv = tk.StringVar(value="250")
+            self.hh_slot_enabled.append(en)
+            self.hh_slot_source.append(srcv)
+            self.hh_slot_tap.append(tapv)
+            self.hh_slot_hold.append(holdv)
+            self.hh_slot_hold_status.append(holdsv)
+            self.hh_slot_threshold.append(thv)
+
+            ttk.Label(grid, text=f"SLOT{i}").grid(row=i+1, column=0, sticky="w", padx=(0, 8), pady=2)
+            cb = ttk.Checkbutton(grid, variable=en, command=lambda n=i: (self._hh_slots_update_hold_status(n), self._hh_slots_changed()))
+            cb.grid(row=i+1, column=1, sticky="w", padx=(0, 8), pady=2)
+            sc = ttk.Combobox(grid, textvariable=srcv, values=key_values, state="readonly", width=12)
+            sc.grid(row=i+1, column=2, sticky="w", padx=(0, 8), pady=2)
+            tc = ttk.Combobox(grid, textvariable=tapv, values=key_values, state="readonly", width=12)
+            tc.grid(row=i+1, column=3, sticky="w", padx=(0, 8), pady=2)
+            hc = ttk.Combobox(grid, textvariable=holdv, values=hold_values, state="readonly", width=12)
+            hc.grid(row=i+1, column=4, sticky="w", padx=(0, 8), pady=2)
+            te = ttk.Entry(grid, textvariable=thv, width=12)
+            te.grid(row=i+1, column=5, sticky="w", padx=(0, 8), pady=2)
+            hs = ttk.Label(grid, textvariable=holdsv, width=26)
+            hs.grid(row=i+1, column=6, sticky="w", pady=2)
+
+            srcv.trace_add("write", self._hh_slots_changed)
+            tapv.trace_add("write", self._hh_slots_changed)
+            holdv.trace_add("write", self._hh_slots_changed)
+            holdv.trace_add("write", lambda *_args, n=i: self._hh_slots_update_hold_status(n))
+            thv.trace_add("write", self._hh_slots_changed)
+            self._hh_slots_update_hold_status(i)
+
+        srow = ttk.Frame(self.hh_slots_frame)
+        srow.pack(fill="x", pady=(7, 0))
+        self.hh_slot_summary = tk.StringVar(value="")
+        ttk.Label(srow, textvariable=self.hh_slot_summary).pack(side="left")
+        ttk.Button(srow, text="Self-test generic baseline", command=self._hh_slots_self_test).pack(side="right")
+        self.hh_slots_flash_btn = ttk.Button(
+            srow, text="Flash validated build", command=self._hh_slots_flash, state="disabled"
+        )
+        self.hh_slots_flash_btn.pack(side="right", padx=(0, 8))
+        self.hh_slots_build_btn = ttk.Button(
+            srow, text="Build & Validate", command=self._hh_slots_build
+        )
+        self.hh_slots_build_btn.pack(side="right", padx=(0, 8))
+
+        self.safety_frame = ttk.LabelFrame(main, text="4. Safety / activity", padding=7)
+        self.safety_frame.pack(fill="both", expand=True, pady=(10, 0))
+        f3 = self.safety_frame
         self.log = tk.Text(f3, wrap="word", state="disabled", font=("Consolas", 9), height=20)
         self.log.pack(side="left", fill="both", expand=True)
         sb = ttk.Scrollbar(f3, command=self.log.yview)
@@ -242,6 +350,10 @@ class UnifiedGUI(tk.Tk):
                     self._append("ERROR: " + payload)
                     messagebox.showerror(APP_TITLE, payload)
                     self.status_line.set("Error — see activity")
+                    if hasattr(self, "hh_slots_build_btn"):
+                        self.hh_slots_build_btn.configure(state="normal")
+                    if hasattr(self, "hh_slots_flash_btn"):
+                        self.hh_slots_flash_btn.configure(state="disabled")
                     self._busy(False)
                 elif kind == "progress":
                     value, label = payload
@@ -251,6 +363,12 @@ class UnifiedGUI(tk.Tk):
                     self.status_line.set(payload)
                 elif kind == "busy_off":
                     self._busy(False)
+                elif kind == "hh_flash_done":
+                    self.hh_validated_build_path = None
+                    self.hh_validated_build_sha = None
+                    self.hh_validated_build_report = None
+                    self.hh_slots_flash_btn.configure(state="disabled")
+                    self.hh_slots_build_btn.configure(state="normal")
                 elif kind == "observer_on":
                     self.observer_state.set(payload)
                     self.obs_start.configure(state="disabled")
@@ -297,6 +415,8 @@ class UnifiedGUI(tk.Tk):
         self.progress_text.set("")
 
         if plat == PLAT_R3S:
+            if hasattr(self, "hh_slots_frame"):
+                self.hh_slots_frame.pack_forget()
             self.platform_note.configure(
                 text="REALFORCE R3S A0.12 · Build here → install with official REALFORCE software (recommended)"
             )
@@ -307,6 +427,8 @@ class UnifiedGUI(tk.Tk):
             self.release.set("0.60")
             self.repress.set("0.80")
         else:
+            if hasattr(self, "hh_slots_frame") and hasattr(self, "safety_frame"):
+                self.hh_slots_frame.pack(fill="x", pady=(10, 0), before=self.safety_frame)
             self.platform_note.configure(
                 text="HHKB Professional Hybrid / Type-S (PD-KB800W) · A0.48 · built-in validated Writer"
             )
@@ -343,6 +465,327 @@ class UnifiedGUI(tk.Tk):
                 return
             except Exception:
                 pass
+
+    # ---------------- HHKB v0.13 generic-HOLD custom slots ----------------
+    def _hh_slots_set_baseline_entry(self, path):
+        self.hh_slot_baseline_entry.configure(state="normal")
+        self.hh_slot_baseline_entry.delete(0, "end")
+        if path:
+            self.hh_slot_baseline_entry.insert(0, str(path))
+        self.hh_slot_baseline_entry.configure(state="readonly")
+
+    def _hh_slots_try_bundled_baseline(self):
+        self.hh_slot_baseline_path=None
+        self.hh_slot_baseline_status.set("Select your exact stock A0.48 HFB")
+        self._hh_slots_changed()
+
+    def _hh_slots_browse_baseline(self):
+        fn=filedialog.askopenfilename(title="Select exact stock HHKB A0.48 HFB",filetypes=[("HHKB firmware","*.hfb"),("All files","*.*")])
+        if not fn: return
+        p=Path(fn)
+        try:
+            data=p.read_bytes(); HHSLOT.validate_stock(data)
+        except Exception as exc:
+            self.hh_slot_baseline_path=None; self._hh_slots_set_baseline_entry(p)
+            self.hh_slot_baseline_status.set("REJECTED — not exact stock A0.48")
+            messagebox.showerror(APP_TITLE,str(exc)); self._hh_slots_changed(); return
+        self.hh_slot_baseline_path=p; self._hh_slots_set_baseline_entry(p)
+        self.hh_slot_baseline_status.set("PASS — exact stock A0.48 · SHA "+HHSLOT.sha256(data)[:16]+"…")
+        self._append(f"HHKB stock A0.48: PASS — {p}"); self._hh_slots_changed()
+
+    def _hh_slots_load_acv(self):
+        vals = [("A", "A", "CTRL", "250"), ("C", "C", "CTRL", "250"), ("V", "V", "CTRL", "250")]
+        for i in range(8):
+            self.hh_slot_enabled[i].set(i < 3)
+            if i < 3:
+                s, tap, hold, th = vals[i]
+                self.hh_slot_source[i].set(s)
+                self.hh_slot_tap[i].set(tap)
+                self.hh_slot_hold[i].set(hold)
+                self.hh_slot_threshold[i].set(th)
+            else:
+                self.hh_slot_source[i].set("A")
+                self.hh_slot_tap[i].set("A")
+                self.hh_slot_hold[i].set("CTRL")
+                self.hh_slot_threshold[i].set("250")
+        self._hh_slots_changed()
+
+    def _hh_slots_update_hold_status(self, slot_no):
+        try:
+            if not self.hh_slot_enabled[slot_no].get():
+                self.hh_slot_hold_status[slot_no].set("—")
+                return
+            name = self.hh_slot_hold[slot_no].get().strip().upper()
+            self.hh_slot_hold_status[slot_no].set(HHSLOT.hold_support_status(name))
+        except Exception:
+            self.hh_slot_hold_status[slot_no].set("UNKNOWN")
+
+    def _hh_slots_collect(self):
+        slots = []
+        for i in range(8):
+            if not self.hh_slot_enabled[i].get():
+                continue
+            src_name = self.hh_slot_source[i].get().strip().upper()
+            tap_name = self.hh_slot_tap[i].get().strip().upper()
+            hold_name = self.hh_slot_hold[i].get().strip().upper()
+            if src_name not in HHSLOT.KEY_MAP:
+                raise HHSLOT.Reject(f"SLOT{i}: unknown source {src_name!r}")
+            if tap_name not in HHSLOT.KEY_MAP:
+                raise HHSLOT.Reject(f"SLOT{i}: unknown tap {tap_name!r}")
+            if hold_name not in HHSLOT.KEY_MAP:
+                raise HHSLOT.Reject(f"SLOT{i}: unknown hold {hold_name!r}")
+            try:
+                threshold = int(self.hh_slot_threshold[i].get().strip(), 0)
+            except Exception:
+                raise HHSLOT.Reject(f"SLOT{i}: threshold must be an integer milliseconds value")
+            if not 1 <= threshold <= 0xFFFF:
+                raise HHSLOT.Reject(f"SLOT{i}: threshold must be 1..65535 ms")
+            slots.append({
+                "label": f"SLOT{i}",
+                "source_name": src_name,
+                "tap_name": tap_name,
+                "hold_name": hold_name,
+                "source": HHSLOT.KEY_MAP[src_name],
+                "tap": HHSLOT.KEY_MAP[tap_name],
+                "hold": HHSLOT.KEY_MAP[hold_name],
+                "threshold_ms": threshold,
+            })
+        HHSLOT.validate_slots(slots)
+        return slots
+
+    def _hh_slots_changed(self, *_args):
+        if hasattr(self, "hh_slots_flash_btn"):
+            self.hh_validated_build_path = None
+            self.hh_validated_build_sha = None
+            self.hh_validated_build_report = None
+            self.hh_slots_flash_btn.configure(state="disabled")
+        if not hasattr(self, "hh_slot_summary"):
+            return
+        try:
+            slots = self._hh_slots_collect()
+            desc = ", ".join(
+                f"{s['source_name']}→tap {s['tap_name']} / hold {s['hold_name']} [{HHSLOT.hold_support_status(s['hold_name'])}] / {s['threshold_ms']}ms"
+                for s in slots
+            )
+            self.hh_slot_summary.set(
+                f"VALID · {len(slots)}/8 enabled"
+                + (f" · {desc}" if desc else " · all disabled")
+            )
+            ready = bool(self.hh_slot_baseline_path)
+            if hasattr(self, "hh_slots_build_btn"):
+                self.hh_slots_build_btn.configure(state="normal" if ready else "disabled")
+            return True
+        except Exception as e:
+            self.hh_slot_summary.set("INVALID · " + str(e))
+            if hasattr(self, "hh_slots_build_btn"):
+                self.hh_slots_build_btn.configure(state="disabled")
+            return False
+
+    def _hh_slots_self_test(self):
+        try:
+            if not self.hh_slot_baseline_path:
+                raise HHSLOT.Reject("Select your exact stock A0.48 HFB first.")
+            baseline = self.hh_slot_baseline_path.read_bytes()
+            HHSLOT.validate_stock(baseline)
+            slots = [HHSLOT.parse_slot("A>A>LALT:250")]
+            out, report = HHSLOT.build(baseline, slots)
+            got = HHSLOT.sha256(out)
+            if got != HHSLOT.GENERIC_CORE_REFERENCE_SHA256:
+                raise HHSLOT.Reject(
+                    f"generic-HOLD reconstruction regression SHA mismatch: {got}"
+                )
+            self._set_log(
+                "HHKB GENERIC-HOLD SELF-TEST PASS\n\n"
+                "A tap A / hold LALT @250 reproduces the hardware-tested "
+                "rev2.2 baseline byte-for-byte.\n"
+                f"SHA-256  {got}\n"
+                f"Table    {report['descriptor_table_hex']}\n\n"
+                "No USB/HID access was performed."
+            )
+            self.status_line.set("HHKB generic-HOLD self-test passed")
+        except Exception as e:
+            messagebox.showerror(APP_TITLE, str(e))
+
+    def _hh_slots_build(self):
+        if not self.hh_slot_baseline_path:
+            messagebox.showerror(APP_TITLE, "Select exact stock A0.48 first.")
+            return
+        try:
+            baseline = self.hh_slot_baseline_path.read_bytes()
+            HHSLOT.validate_stock(baseline)
+            slots = self._hh_slots_collect()
+            out, report = HHSLOT.build(baseline, slots)
+        except Exception as e:
+            messagebox.showerror(APP_TITLE, str(e))
+            return
+
+        names = "-".join(s["source_name"] for s in slots) if slots else "NONE"
+        target = self.output_dir / f"HHKB_A048_TOPRERT_V013_GENERIC_HOLD_{names}.hfb"
+        n = 2
+        while target.exists():
+            target = self.output_dir / f"HHKB_A048_TOPRERT_V013_GENERIC_HOLD_{names}_{n}.hfb"
+            n += 1
+        target.write_bytes(out)
+        manifest = Path(str(target) + ".manifest.json")
+        manifest.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        self.progress["value"] = 100
+        self.progress_text.set("Build ready")
+        self._set_log(
+            "BUILD PASS — HHKB GENERIC HOLD\n\n"
+            f"Firmware  {target}\n"
+            f"Manifest  {manifest}\n"
+            f"SHA-256   {report['output_sha256']}\n"
+            f"Main CRC  {report['main_crc']}\n"
+            f"Global CRC {report['global_crc']}\n\n"
+            + "\n".join(
+                f"SLOT{s['slot']}: {s['source_name']}({s['source']}) "
+                f"→ tap {s['tap_name']}({s['tap']}) · hold {s['hold_name']}({s['hold']}) "
+                f"[{s['hold_support']}] · {s['threshold_ms']}ms · {s['descriptor_hex']}"
+                for s in report["slots"]
+            )
+            + "\n\nHOLD SUPPORT STATUS\n"
+              "  HW VALIDATED: CTRL, LALT, V, SPACE\n"
+              "  GENERIC / LIMITED TESTING: other selectable HOLD targets\n"
+              "  BLOCKED: LSHIFT, RSHIFT, FN\n"
+              "\nBuild policy: exact stock A0.48 → audited rev2.2 core patch; custom delta is CRC header + descriptor table.\n"
+              "Build is SHA-locked before Flash is enabled."
+        )
+        # Lock the exact bytes that passed the builder audit. Any later slot edit
+        # invalidates this state in _hh_slots_changed().
+        built_bytes = target.read_bytes()
+        built_sha = HHSLOT.sha256(built_bytes)
+        if built_sha != report["output_sha256"]:
+            raise HHSLOT.Reject("Post-write SHA mismatch; refusing to enable Flash.")
+        # Re-run baseline + candidate audit from disk, not from the in-memory image.
+        baseline_disk = self.hh_slot_baseline_path.read_bytes()
+        HHSLOT.validate_baseline(baseline_disk)
+        rebuilt, re_report = HHSLOT.build(baseline_disk, slots)
+        if rebuilt != built_bytes or re_report["output_sha256"] != built_sha:
+            raise HHSLOT.Reject("Post-write regression audit mismatch.")
+
+        self.hh_validated_build_path = target
+        self.hh_validated_build_sha = built_sha
+        self.hh_validated_build_report = report
+        self.hh_slots_flash_btn.configure(state="normal")
+        self.status_line.set("HHKB build validated — ready to flash")
+        messagebox.showinfo(
+            APP_TITLE,
+            "Build & validation PASS.\n\n"
+            "Flash is now enabled only for this exact SHA-locked file.\n"
+            "Changing any slot setting will disable Flash again.\n\n"
+            f"SHA-256: {built_sha}\n\n{target}"
+        )
+
+    def _hh_slots_flash(self):
+        path = self.hh_validated_build_path
+        sha = self.hh_validated_build_sha
+        if not path or not sha:
+            messagebox.showerror(APP_TITLE, "No validated custom-slot build is armed.")
+            return
+        path = Path(path)
+        if not path.exists():
+            self._hh_slots_changed()
+            messagebox.showerror(APP_TITLE, "Validated HFB no longer exists.")
+            return
+        current_sha = HHSLOT.sha256(path.read_bytes())
+        if current_sha != sha:
+            self._hh_slots_changed()
+            messagebox.showerror(
+                APP_TITLE,
+                "Validated HFB changed on disk. Flash has been disarmed."
+            )
+            return
+
+        token = "FLASH-" + sha[:12].upper()
+        prompt = (
+            "REAL HHKB FIRMWARE UPDATE\n\n"
+            "The exact validated HFB below will be flashed.\n"
+            "Do not disconnect USB or let the PC sleep.\n\n"
+            f"SHA-256: {sha}\n\n"
+            f"Type exactly:\n{token}"
+        )
+        typed = simpledialog.askstring(APP_TITLE, prompt, parent=self)
+        if typed != token:
+            if typed is not None:
+                messagebox.showinfo(APP_TITLE, "Confirmation did not match. Flash cancelled.")
+            return
+
+        self.hh_slots_flash_btn.configure(state="disabled")
+        self.hh_slots_build_btn.configure(state="disabled")
+        self.status_line.set("HHKB flash armed — preflight starting")
+        self._worker(lambda: self._hh_slots_flash_worker(path, sha, token))
+
+    def _hh_slots_flash_worker(self, path, sha, token):
+        helper = HHKB_DIR / "hhkb_v013_validated_flasher_v0_1.py"
+        baseline = self.hh_slot_baseline_path
+        if not helper.exists():
+            raise RuntimeError(f"Validated flasher helper missing: {helper}")
+        if baseline is None or not baseline.exists():
+            raise RuntimeError("Exact stock A0.48 input is no longer available.")
+
+        cmd = [
+            sys.executable, "-u", str(helper), str(path),
+            "--baseline", str(baseline),
+            "--expected-sha", sha,
+            "--confirm-token", token,
+            "--flash",
+        ]
+        self.q.put(("log", "FLASH PREFLIGHT — exact SHA/diff/CRC validation will run again."))
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1
+        )
+        flash_t0 = None
+        try:
+            for line in proc.stdout:
+                line = line.rstrip()
+                if not line:
+                    continue
+                self.q.put(("log", line))
+
+                # Hardware-tested writer reports E2 as: "  201/4960    4.1%"
+                m = re.search(r"(\d+)\s*/\s*(\d+)\s+(\d+(?:\.\d+)?)%$", line)
+                if m:
+                    done = int(m.group(1))
+                    total = int(m.group(2))
+                    pct = float(m.group(3))
+                    now = time.monotonic()
+                    if flash_t0 is None:
+                        flash_t0 = now
+                    elapsed = max(0.0, now - flash_t0)
+                    rate = (done - 1) / elapsed if elapsed > 0 and done > 1 else 0.0
+                    remain = max(0, total - done)
+                    eta = remain / rate if rate > 0 else None
+
+                    def _fmt_clock(seconds):
+                        seconds = max(0, int(round(seconds)))
+                        mm, ss = divmod(seconds, 60)
+                        hh, mm = divmod(mm, 60)
+                        return f"{hh:d}:{mm:02d}:{ss:02d}" if hh else f"{mm:02d}:{ss:02d}"
+
+                    elapsed_s = _fmt_clock(elapsed)
+                    eta_s = _fmt_clock(eta) if eta is not None else "--:--"
+                    rate_s = f"{rate:.1f} pkt/s" if rate > 0 else "measuring…"
+                    detail = (
+                        f"HHKB flashing · {pct:.1f}% · "
+                        f"elapsed {elapsed_s} · ETA {eta_s} · {rate_s}"
+                    )
+                    self.q.put(("progress", (pct, detail)))
+                    self.q.put(("status", detail))
+            rc = proc.wait()
+        finally:
+            if proc.stdout:
+                proc.stdout.close()
+
+        if rc != 0:
+            raise RuntimeError(f"HHKB validated flasher exited with code {rc}")
+
+        self.q.put(("progress", (100, "HHKB flash complete")))
+        self.q.put(("status", "HHKB custom v0.12 flash completed — reconnect verified"))
+        self.q.put(("log", "FLASH PASS — E3 completed and normal firmware reconnect was verified."))
+        # Do not leave a stale build armed after a real flash.
+        self.q.put(("hh_flash_done", None))
 
     # ---------------- Source validation ----------------
     def browse_source(self):
@@ -1024,6 +1467,15 @@ class UnifiedGUI(tk.Tk):
                     "stock SHA: PASS", "build/CRC: PASS",
                     "whitelist/helper config: PASS", f"profile: R{rr}/P{pr}"
                 ]
+                if self.hh_slot_baseline_path:
+                    baseline = self.hh_slot_baseline_path.read_bytes()
+                    HHSLOT.validate_stock(baseline)
+                    slot_img, _slot_report = HHSLOT.build(
+                        baseline, [HHSLOT.parse_slot("A>A>LALT:250")]
+                    )
+                    if HHSLOT.sha256(slot_img) != HHSLOT.GENERIC_CORE_REFERENCE_SHA256:
+                        raise HHSLOT.Reject("v0.13 generic-HOLD descriptor regression SHA mismatch")
+                    lines += ["v0.13 generic-HOLD builder regression: PASS"]
             self._set_log("\n".join(lines))
             self.status_line.set("Self-test passed")
         except Exception as e:

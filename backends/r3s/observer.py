@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 xvlqwz <xvlqwz@users.noreply.github.com>
-// Copyright (C) 2026 rocketman2654 <rocketman2654@users.noreply.github.com>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 xvlqwz <xvlqwz@users.noreply.github.com>
+# Copyright (C) 2026 rocketman2654 <rocketman2654@users.noreply.github.com>
 
 #!/usr/bin/env python3
 """TopreRT Observer v0.4 — read-only C5 RT crossing validator."""

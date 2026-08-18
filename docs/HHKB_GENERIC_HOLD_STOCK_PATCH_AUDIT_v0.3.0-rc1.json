@@ -1,0 +1,12 @@
+{
+  "status": "GITHUB_SAFE_COMMIT_CANDIDATE",
+  "stock_sha256": "635b995eb5a15aa50c2cedc60da7d8998fcca8285a09d41d984c07fffcaf9d43",
+  "hardware_tested_reference_sha256": "2d39137c42d225d4ec80036f5bc43952b3d723db9b9546def77510721a51484d",
+  "core_patch_runs": 33,
+  "core_patch_total_bytes": 2122,
+  "exact_reference_reconstruction": "PASS",
+  "representative_three_slot_build": "PASS",
+  "validated_flasher_dry_run": "PASS",
+  "unsafe_config_rejection": "PASS",
+  "bundled_firmware_binaries": 0
+}

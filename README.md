@@ -164,6 +164,31 @@ Users must supply their own stock firmware images locally. TopreRT will only pro
 - HHKB macOS DIP switch mode: Not yet validated.
 - R3SB ROM DFU: Pin placement procedures are specific to the R3SB PCB and must **not** be assumed valid for other R3S revisions.
 
+## HHKB v0.3.0-rc1 — Dual-Role / Generic HOLD
+
+HHKB Professional Hybrid / Hybrid Type-S (PD-KB800W, A0.48) can use up to
+eight descriptor-driven dual-role slots. Each enabled slot has its own
+**Source**, **Tap**, **Hold**, and **hold threshold**.
+
+The GUI requires the user's own exact stock A0.48 HFB. TopreRT verifies the
+input by SHA-256, reconstructs the hardware-tested generic-HOLD core locally
+from audited byte substitutions, writes the 64-byte descriptor table,
+recomputes both CRCs, and revalidates the candidate before flashing is enabled.
+
+Exact supported stock image:
+
+```text
+SHA-256 635b995eb5a15aa50c2cedc60da7d8998fcca8285a09d41d984c07fffcaf9d43
+```
+
+Hardware-validated HOLD targets currently include **CTRL, LALT, V, and SPACE**.
+`LSHIFT`, `RSHIFT`, and `FN` HOLD targets remain blocked pending separate
+validation of their modifier/special-key semantics. Other selectable HOLD
+targets should be treated as limited-tested.
+
+No stock firmware or pre-patched HHKB firmware binary is distributed by this
+workflow.
+
 ## License
 
 This project is licensed under the GNU Affero General Public License v3.0 - see the [LICENSE](LICENSE) file for details.

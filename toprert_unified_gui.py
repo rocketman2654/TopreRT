@@ -4,7 +4,7 @@
 
 #!/usr/bin/env python3
 r"""
-TopreRT Unified GUI v0.3.0-rc1
+TopreRT Unified GUI v0.3.0-rc2
 
 One front-end, two frozen backends:
 - REALFORCE R3S A0.12: build/validate here, update with official REALFORCE software
@@ -43,12 +43,12 @@ import hhkb_toprert_engine_v0_6 as HHE
 
 # v0.13 generic-HOLD custom-slot builder.
 try:
-    import hhkb_v013_generic_hold_builder_v0_1 as HHSLOT
+    import hhkb_v013_generic_hold_builder_v0_2_rc2 as HHSLOT
 except ImportError:
     sys.path.insert(0, str(APP_DIR))
-    import hhkb_v013_generic_hold_builder_v0_1 as HHSLOT
+    import hhkb_v013_generic_hold_builder_v0_2_rc2 as HHSLOT
 
-APP_TITLE = "TopreRT Unified GUI v0.3.0-rc1"
+APP_TITLE = "TopreRT Unified GUI v0.3.0-rc2"
 PLAT_R3S = "REALFORCE R3S"
 PLAT_HHKB = "HHKB Professional Hybrid"
 
@@ -196,9 +196,10 @@ class UnifiedGUI(tk.Tk):
         info.pack(fill="x")
         ttk.Label(
             info,
-            text="Input: exact stock A0.48 · Hold: per-slot · CTRL/LALT/V/SPACE hardware-validated"
+            text="Input: exact stock A0.48 · CTRL/LALT/V/SPACE validated · SpaceFn validated special case"
         ).pack(side="left")
-        ttk.Button(info, text="Load A/C/V preset", command=self._hh_slots_load_acv).pack(side="right")
+        ttk.Button(info, text="Load SpaceFn preset", command=self._hh_slots_load_spacefn).pack(side="right")
+        ttk.Button(info, text="Load A/C/V preset", command=self._hh_slots_load_acv).pack(side="right", padx=(0, 8))
 
         brow = ttk.Frame(self.hh_slots_frame)
         brow.pack(fill="x", pady=(6, 6))
@@ -216,8 +217,8 @@ class UnifiedGUI(tk.Tk):
             )
 
         # LSHIFT source/tap remains blocked because its tap path is not proven.
-        # HOLD uses the generic rev2 engine. Shift/Fn HOLD targets stay blocked until
-        # their modifier/special-key semantics are separately validated.
+        # HOLD uses the generic rev2 engine. Shift HOLD targets remain blocked.
+        # FN is exposed, but the builder accepts it only for SPACE -> SPACE / FN.
         key_values = [k for k in HHSLOT.KEY_MAP.keys() if k != "LSHIFT"]
         hold_values = [
             k for k, idx in HHSLOT.KEY_MAP.items()
@@ -510,6 +511,21 @@ class UnifiedGUI(tk.Tk):
                 self.hh_slot_threshold[i].set("250")
         self._hh_slots_changed()
 
+    def _hh_slots_load_spacefn(self):
+        for i in range(8):
+            self.hh_slot_enabled[i].set(i == 0)
+            if i == 0:
+                self.hh_slot_source[i].set("SPACE")
+                self.hh_slot_tap[i].set("SPACE")
+                self.hh_slot_hold[i].set("FN")
+                self.hh_slot_threshold[i].set("250")
+            else:
+                self.hh_slot_source[i].set("A")
+                self.hh_slot_tap[i].set("A")
+                self.hh_slot_hold[i].set("CTRL")
+                self.hh_slot_threshold[i].set("250")
+        self._hh_slots_changed()
+
     def _hh_slots_update_hold_status(self, slot_no):
         try:
             if not self.hh_slot_enabled[slot_no].get():
@@ -646,8 +662,9 @@ class UnifiedGUI(tk.Tk):
             )
             + "\n\nHOLD SUPPORT STATUS\n"
               "  HW VALIDATED: CTRL, LALT, V, SPACE\n"
+              "  HW VALIDATED SPECIAL CASE: SPACE -> tap SPACE / hold FN\n"
               "  GENERIC / LIMITED TESTING: other selectable HOLD targets\n"
-              "  BLOCKED: LSHIFT, RSHIFT, FN\n"
+              "  BLOCKED: LSHIFT, RSHIFT\n"
               "\nBuild policy: exact stock A0.48 → audited rev2.2 core patch; custom delta is CRC header + descriptor table.\n"
               "Build is SHA-locked before Flash is enabled."
         )
@@ -659,7 +676,7 @@ class UnifiedGUI(tk.Tk):
             raise HHSLOT.Reject("Post-write SHA mismatch; refusing to enable Flash.")
         # Re-run baseline + candidate audit from disk, not from the in-memory image.
         baseline_disk = self.hh_slot_baseline_path.read_bytes()
-        HHSLOT.validate_baseline(baseline_disk)
+        HHSLOT.validate_stock(baseline_disk)
         rebuilt, re_report = HHSLOT.build(baseline_disk, slots)
         if rebuilt != built_bytes or re_report["output_sha256"] != built_sha:
             raise HHSLOT.Reject("Post-write regression audit mismatch.")
@@ -782,7 +799,7 @@ class UnifiedGUI(tk.Tk):
             raise RuntimeError(f"HHKB validated flasher exited with code {rc}")
 
         self.q.put(("progress", (100, "HHKB flash complete")))
-        self.q.put(("status", "HHKB custom v0.12 flash completed — reconnect verified"))
+        self.q.put(("status", "HHKB custom v0.13 flash completed — reconnect verified"))
         self.q.put(("log", "FLASH PASS — E3 completed and normal firmware reconnect was verified."))
         # Do not leave a stale build armed after a real flash.
         self.q.put(("hh_flash_done", None))

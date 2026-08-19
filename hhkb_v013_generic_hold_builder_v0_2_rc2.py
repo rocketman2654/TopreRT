@@ -4,7 +4,7 @@
 
 #!/usr/bin/env python3
 """
-HHKB TopreRT v0.13 generic HOLD descriptor builder v0.1
+HHKB TopreRT v0.13 generic HOLD descriptor builder v0.2
 
 OFFLINE / FAIL-CLOSED:
   - no HID access
@@ -32,11 +32,14 @@ Safety constraints for the first public generic-HOLD engine:
   - duplicate Source values are rejected
   - Hold must not equal its Source
   - Hold must not be ANY enabled dual-role Source
-  - LSHIFT/RSHIFT/FN are not accepted as HOLD targets yet
+  - LSHIFT/RSHIFT remain blocked as HOLD targets
+  - FN is accepted only for SPACE -> tap SPACE / hold FN (hardware-verified special case)
   - LSHIFT remains excluded as a Source/Tap because its tap semantics are not proven
 
 Hardware-validated representative HOLD targets:
-  V, CTRL/LeftCtrl, LALT.
+  V, CTRL/LeftCtrl, LALT, SPACE.
+Hardware-validated special case:
+  SPACE -> tap SPACE / hold FN.
 Other non-blocked targets use the same stock emitter path but remain less-tested.
 """
 
@@ -74,7 +77,10 @@ KEY_MAP = {
 }
 INDEX_TO_NAME = {v: k for k, v in KEY_MAP.items()}
 BLOCKED_SOURCE_TAP = {KEY_MAP["LSHIFT"]}
-BLOCKED_HOLD = {KEY_MAP["LSHIFT"], KEY_MAP["RSHIFT"], KEY_MAP["FN"]}
+BLOCKED_HOLD = {KEY_MAP["LSHIFT"], KEY_MAP["RSHIFT"]}
+SPACEFN_SOURCE = KEY_MAP["SPACE"]
+SPACEFN_TAP = KEY_MAP["SPACE"]
+SPACEFN_HOLD = KEY_MAP["FN"]
 
 HW_VALIDATED_HOLD_NAMES = {"CTRL", "LALT", "V", "SPACE"}
 
@@ -84,6 +90,8 @@ def hold_support_status(name: str) -> str:
         return "UNKNOWN"
     if KEY_MAP[key] in BLOCKED_HOLD:
         return "BLOCKED"
+    if key == "FN":
+        return "HW VALIDATED — SPACEFN ONLY"
     if key in HW_VALIDATED_HOLD_NAMES:
         return "HW VALIDATED"
     return "GENERIC / LIMITED TESTING"
@@ -158,17 +166,30 @@ def validate_slots(slots: list[dict]):
     if len(set(sources)) != len(sources):
         raise Reject("duplicate source key/index across enabled slots")
     source_set = set(sources)
+
     for n, cfg in enumerate(slots):
         source = cfg["source"]
         tap = cfg["tap"]
         hold = cfg["hold"]
+
         if source in BLOCKED_SOURCE_TAP:
             raise Reject(f"SLOT{n}: LSHIFT source is not supported")
         if tap in BLOCKED_SOURCE_TAP:
             raise Reject(f"SLOT{n}: LSHIFT tap is not supported")
+
         if hold in BLOCKED_HOLD:
             name = INDEX_TO_NAME.get(hold, str(hold))
             raise Reject(f"SLOT{n}: HOLD {name} is reserved/unsupported in this engine")
+
+        # Hardware-verified FN exception is deliberately narrow:
+        # only SPACE -> tap SPACE / hold FN is accepted.
+        if hold == SPACEFN_HOLD:
+            if source != SPACEFN_SOURCE or tap != SPACEFN_TAP:
+                raise Reject(
+                    f"SLOT{n}: HOLD FN is hardware-verified only for "
+                    "SPACE>SPACE>FN; other FN HOLD sources remain unsupported"
+                )
+
         if hold == source:
             raise Reject(f"SLOT{n}: HOLD must not equal Source")
         if hold in source_set:
@@ -211,5 +232,5 @@ def build(stock_hfb: bytes, slots: list[dict]) -> tuple[bytes, dict]:
         "stock_sha256":sha256(stock_hfb),"generic_core_reference_sha256":GENERIC_CORE_REFERENCE_SHA256,
         "output_sha256":sha256(result),"size":len(result),"main_crc":f"0x{main_crc:04X}",
         "global_crc":f"0x{global_crc:04X}","descriptor_table_hex":bytes(table).hex(" "),"slots":report_slots,
-        "policy":{"hold_not_source":True,"hold_not_enabled_source":True,"blocked_hold_names":["LSHIFT","RSHIFT","FN"],
-                  "hw_validated_hold_names":sorted(HW_VALIDATED_HOLD_NAMES),"generic_allowed_status":"GENERIC / LIMITED TESTING"}}
+        "policy":{"hold_not_source":True,"hold_not_enabled_source":True,"blocked_hold_names":["LSHIFT","RSHIFT"],
+                  "hw_validated_hold_names":sorted(HW_VALIDATED_HOLD_NAMES),"generic_allowed_status":"GENERIC / LIMITED TESTING","spacefn_status":"HARDWARE VERIFIED","spacefn_rule":"SPACE>SPACE>FN with configurable threshold"}}

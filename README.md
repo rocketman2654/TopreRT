@@ -24,6 +24,8 @@ TopreRT is an unofficial toolkit that leverages the continuous capacitive sensin
 ## Highlights
 
 * **All-key Rapid Trigger core** with adjustable release and re-press distances.
+* **HHKB Dual-Role / Generic HOLD** with up to eight configurable slots.
+* **Hardware-validated HHKB SpaceFn:** tap Space for Space, hold Space for the native Fn layer.
 * **Exact-image SHA-256 validation** and fail-closed patching logic.
 * **Dual-layer validation:** GUI-level checks backed by independent backend validation.
 * **Live Observer interface** for real-time key testing (`WASD`, `Space`, `R`, `E`).
@@ -164,7 +166,7 @@ Users must supply their own stock firmware images locally. TopreRT will only pro
 - HHKB macOS DIP switch mode: Not yet validated.
 - R3SB ROM DFU: Pin placement procedures are specific to the R3SB PCB and must **not** be assumed valid for other R3S revisions.
 
-## HHKB v0.3.0-rc1 — Dual-Role / Generic HOLD
+## HHKB v0.3.0-rc2 — Dual-Role / Generic HOLD + SpaceFn
 
 HHKB Professional Hybrid / Hybrid Type-S (PD-KB800W, A0.48) can use up to
 eight descriptor-driven dual-role slots. Each enabled slot has its own
@@ -181,10 +183,33 @@ Exact supported stock image:
 SHA-256 635b995eb5a15aa50c2cedc60da7d8998fcca8285a09d41d984c07fffcaf9d43
 ```
 
-Hardware-validated HOLD targets currently include **CTRL, LALT, V, and SPACE**.
-`LSHIFT`, `RSHIFT`, and `FN` HOLD targets remain blocked pending separate
-validation of their modifier/special-key semantics. Other selectable HOLD
-targets should be treated as limited-tested.
+Hardware-validated generic HOLD targets currently include **CTRL, LALT, V, and SPACE**.
+
+### SpaceFn
+
+v0.3.0-rc2 adds a hardware-validated SpaceFn special case:
+
+```text
+Source: SPACE
+Tap:    SPACE
+Hold:   FN
+```
+
+A short press behaves as a normal Space key. Holding Space activates the native
+HHKB Fn layer, and the hold threshold is user-configurable.
+
+SpaceFn was hardware-tested with physical and synthetic Fn overlap, both Fn
+press/release orders, rapid reactivation, repeated threshold-edge use, multiple
+Fn-layer functions, and reversed Space / layer-key release order. No stuck-Fn
+behavior was observed during these tests.
+
+`FN` is **not** an unrestricted generic HOLD target. Only the validated
+`SPACE -> SPACE / FN` combination is currently accepted. Other Source -> Fn
+combinations remain unsupported. `LSHIFT` and `RSHIFT` HOLD targets remain
+blocked. Other selectable HOLD targets should be treated as limited-tested.
+
+v0.3.0-rc2 also fixes an rc1 GUI regression where **Build & Validate** could
+succeed while **Flash validated build** remained disabled.
 
 No stock firmware or pre-patched HHKB firmware binary is distributed by this
 workflow.

@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 STOCK_SHA256="635b995eb5a15aa50c2cedc60da7d8998fcca8285a09d41d984c07fffcaf9d43"
 STOCK_SIZE=282672
-GENERIC_CORE_REFERENCE_SHA256="2d39137c42d225d4ec80036f5bc43952b3d723db9b9546def77510721a51484d"
+GENERIC_CORE_REFERENCE_SHA256="327fd161b61a90095e6cdcb38adfa877ce5f9a79e4f59fc07a29aef50fd93f1a"
 class PatchReject(RuntimeError): pass
 PATCHES=[
 (0x4D0C,bytes.fromhex("06 46 a6 42"),bytes.fromhex("09 f0 36 fe")),
@@ -39,7 +39,11 @@ PATCHES=[
 (0xF01B,bytes.fromhex("ff ff"),bytes.fromhex("f7 65")),
 (0xF01E,bytes.fromhex("ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff"),bytes.fromhex("00 2a 0d d0 0a 4b 9a 79 82 42 09 d1 1a 79 03 2a 05 d1 00 22 1a 71 03 bc 04 bc 07 4b 18 47 03 bd 03 bc 04 bc 05 4b 18 47 70 47 a4 ee 01 08 f0 4f 00 20 99 ed 01 08 97 ed 01 08 35 45 01 08 65 47 01 08 05 24 01 08 5d 06 00 20")),
 (0xF084,bytes.fromhex("ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff"),bytes.fromhex("96 e0 00 bf 16 4a 01 23 d3 71 16 4b 18 47 03 b5 00 f0 24 f8 00 2a 1c d0 11 4b 99 78 00 29 05 d1 d9 78 00 29 02 d1 19 79 03 29 02 d1 99 79 81 42 0f d1 98 71 0c 49 09 78 00 29 07 d0 01 29 02 d1 d9 79 01 29 02 d0 03 21 19 71 02 e0 00 21 19 71 03 bd 03 bc 08 bc 9e 46 02 4b 18 47 03 4b 18 47 f0 4f 00 20 65 47 01 08 5d 06 00 20 e5 ee 01 08")),
-(0xF104,bytes.fromhex("ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff"),bytes.fromhex("70 e0 00 bf 10 4a 00 23 d3 71 d3 78 01 2b 17 d0 0e 4b 18 47 03 b5 08 46 00 f0 14 f8 00 2a 0a d0 09 4b 9a 79 82 42 06 d1 1a 79 03 2a 02 d1 00 22 1a 71 00 e0 03 bd 03 bc 08 bc 9e 46 03 4b 18 47 70 47 c0 46 02 4b 18 47 f0 4f 00 20 35 45 01 08 e5 ee 01 08 00 b5 30 4a 90 79 30 4b 98 47 00 2a 01 d0 d0 78 00 bd 03 20 00 bd c0 46 10 b5")),
+# The generic wrapper at 0x0801F1E4 already preserves ownership when the
+# released physical key equals the active hold target. Do not suppress Ctrl
+# again merely because some other hold (e.g. Fn) is active: replace the
+# redundant BEQ at runtime 0x0801F10E / HFB 0xF112 with a Thumb NOP.
+(0xF104,bytes.fromhex("ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff"),bytes.fromhex("70 e0 00 bf 10 4a 00 23 d3 71 d3 78 01 2b 00 bf 0e 4b 18 47 03 b5 08 46 00 f0 14 f8 00 2a 0a d0 09 4b 9a 79 82 42 06 d1 1a 79 03 2a 02 d1 00 22 1a 71 00 e0 03 bd 03 bc 08 bc 9e 46 03 4b 18 47 70 47 c0 46 02 4b 18 47 f0 4f 00 20 35 45 01 08 e5 ee 01 08 00 b5 30 4a 90 79 30 4b 98 47 00 2a 01 d0 d0 78 00 bd 03 20 00 bd c0 46 10 b5")),
 (0xF173,bytes.fromhex("ff ff"),bytes.fromhex("f7 f1")),
 (0xF176,bytes.fromhex("ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff"),bytes.fromhex("04 46 2a 4a 12 5d 03 23 1a 40 03 2a 02 d0 20 46 28 4b 98 47 10 bd 10 b5")),
 (0xF18F,bytes.fromhex("ff ff"),bytes.fromhex("f7 e3")),

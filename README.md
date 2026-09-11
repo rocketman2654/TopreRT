@@ -36,6 +36,12 @@ TopreRT is an unofficial toolkit that leverages the continuous capacitive sensin
 
 ---
 
+## HHKB Ctrl-release correction
+
+The generic-HOLD core includes an emulation-tested correction for physical Ctrl
+remaining held when released during SpaceFn or another non-Ctrl hold. Hardware
+validation of this correction is pending. See [regression tests and limitations](tests/README.md).
+
 ## Requirements
 
 * **OS:** Windows 10 / 11

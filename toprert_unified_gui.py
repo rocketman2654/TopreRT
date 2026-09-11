@@ -612,8 +612,8 @@ class UnifiedGUI(tk.Tk):
                 )
             self._set_log(
                 "HHKB GENERIC-HOLD SELF-TEST PASS\n\n"
-                "A tap A / hold LALT @250 reproduces the hardware-tested "
-                "rev2.2 baseline byte-for-byte.\n"
+                "A tap A / hold LALT @250 reproduces the Ctrl-release-corrected "
+                "reference byte-for-byte (emulation tested; hardware validation pending).\n"
                 f"SHA-256  {got}\n"
                 f"Table    {report['descriptor_table_hex']}\n\n"
                 "No USB/HID access was performed."

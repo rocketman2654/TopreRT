@@ -11,13 +11,14 @@ OFFLINE / FAIL-CLOSED:
   - no USB commands
   - no flashing
 
-The executable/core/hooks/wrappers are SHA-locked to the hardware-tested
-v0.13 rev2.2 generic-HOLD baseline.
+The executable/core/hooks/wrappers use the v0.13 rev2.2 generic-HOLD
+baseline with the emulation-tested physical Ctrl release correction.
+The corrected core has not yet been hardware validated.
 
 Only:
   HFB[0:4]              CRC fields
   HFB[0xEEA8:0xEEE8]    8 x 8-byte descriptor table
-may differ from the baseline.
+may differ from the corrected core.
 
 Descriptor:
   +0 flags        bit0 enabled

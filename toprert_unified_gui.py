@@ -4,7 +4,7 @@
 
 #!/usr/bin/env python3
 r"""
-TopreRT Unified GUI v0.3.0-rc2
+TopreRT Unified GUI v0.3.0-rc2 — GUI layout preview
 
 One front-end, two frozen backends:
 - REALFORCE R3S A0.12: build/validate here, update with official REALFORCE software
@@ -40,6 +40,8 @@ import toprert as R3P
 
 sys.path.insert(0, str(HHKB_DIR))
 import hhkb_toprert_engine_v0_6 as HHE
+import firmware_detection as FW_DETECT
+import device_diagnostics as DEVICE_DIAG
 
 # v0.13 generic-HOLD custom-slot builder.
 try:
@@ -48,7 +50,7 @@ except ImportError:
     sys.path.insert(0, str(APP_DIR))
     import hhkb_v013_generic_hold_builder_v0_2_rc2 as HHSLOT
 
-APP_TITLE = "TopreRT Unified GUI v0.3.0-rc2"
+APP_TITLE = "TopreRT GUI — Preview 2026.10.15"
 PLAT_R3S = "REALFORCE R3S"
 PLAT_HHKB = "HHKB Professional Hybrid"
 
@@ -73,8 +75,8 @@ class UnifiedGUI(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
-        self.geometry("1110x980")
-        self.minsize(1000, 820)
+        self.geometry("1120x790")
+        self.minsize(960, 580)
 
         self.platform = tk.StringVar(value=PLAT_R3S)
         self.source_path = None
@@ -106,9 +108,16 @@ class UnifiedGUI(tk.Tk):
         self.status_line = tk.StringVar(value="Ready")
         self.action_status = tk.StringVar(value="")
         self.observer_state = tk.StringVar(value="Observer idle")
+        self.installed_firmware = tk.StringVar(value="Not queried — USB only; manual read-only check")
+        self.firmware_identification = None
+        self.detect_detail = tk.StringVar(value="Legacy detection is experimental; no flashing performed.")
         self.progress_text = tk.StringVar(value="")
 
         self.worker = None
+        self.flash_active = False
+        self._closing = False
+        self._flash_widget_states = []
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.q = queue.Queue()
         self.stop_event = threading.Event()
         self.r3_observer_proc = None
@@ -118,6 +127,9 @@ class UnifiedGUI(tk.Tk):
         self.flash_rate = None
 
         self._build_ui()
+        self._install_wheel_bindings()
+        self.update_idletasks()  # Complete initial widget geometry before fitting tab height.
+        self._fit_active_tab_height()
         self._hh_slots_try_bundled_baseline()
         self.release.trace_add("write", self._profile_text_changed)
         self.repress.trace_add("write", self._profile_text_changed)
@@ -127,8 +139,26 @@ class UnifiedGUI(tk.Tk):
 
     # ---------------- UI ----------------
     def _build_ui(self):
-        main = ttk.Frame(self, padding=12)
-        main.pack(fill="both", expand=True)
+        # Keep firmware operations visible even at modest desktop resolutions.
+        # Only the content pane scrolls; firmware code and safety checks are unchanged.
+        self.footer = ttk.Frame(self, padding=(12, 8, 12, 10))
+        self.footer.pack(side="bottom", fill="x")
+        content_area = ttk.Frame(self)
+        content_area.pack(side="top", fill="both", expand=True)
+        self.content_canvas = tk.Canvas(content_area, borderwidth=0, highlightthickness=0)
+        hscroll = ttk.Scrollbar(content_area, orient="horizontal", command=self.content_canvas.xview)
+        hscroll.pack(side="bottom", fill="x")
+        vscroll = ttk.Scrollbar(content_area, orient="vertical", command=self.content_canvas.yview)
+        vscroll.pack(side="right", fill="y")
+        self.content_canvas.pack(side="left", fill="both", expand=True)
+        self.content_canvas.configure(yscrollcommand=vscroll.set, xscrollcommand=hscroll.set)
+        main = ttk.Frame(self.content_canvas, padding=12)
+        self._content_window = self.content_canvas.create_window((0, 0), window=main, anchor="nw")
+        main.bind("<Configure>", self._update_content_scrollregion)
+        self.content_canvas.bind("<Configure>", self._resize_content_viewport)
+        # Wheel routing is scoped to the content pane; never use bind_all here.
+        # Windows ttk combobox popdowns are separate Tk windows, and the old
+        # global binding scrolled the whole GUI behind an open selection menu.
 
         top = ttk.Frame(main)
         top.pack(fill="x")
@@ -144,17 +174,67 @@ class UnifiedGUI(tk.Tk):
         self.platform_note = ttk.Label(main, text="")
         self.platform_note.pack(anchor="w", pady=(2, 10))
 
-        f1 = ttk.LabelFrame(main, text="1. Stock firmware", padding=9)
+        inspect_box = ttk.LabelFrame(main, text="Installed firmware · Last inspection", padding=8)
+        inspect_box.pack(fill="x", pady=(0, 8))
+        inspect_header = ttk.Frame(inspect_box)
+        inspect_header.pack(fill="x")
+        ttk.Label(inspect_header, textvariable=self.installed_firmware, font=("Segoe UI", 10, "bold")).pack(side="left")
+        self.inspect_btn = ttk.Button(inspect_header, text="Inspect firmware", command=self.inspect_installed_firmware)
+        self.inspect_btn.pack(side="right", padx=(8, 0))
+        self.diagnostics_btn = ttk.Button(inspect_header, text="Device diagnostics", command=self.inspect_device_diagnostics)
+        self.diagnostics_btn.pack(side="right", padx=(8, 0))
+        self.firmware_report_btn = ttk.Button(inspect_box, text="Save identification report…",
+            command=self.save_firmware_identification, state="disabled")
+        self.firmware_report_btn.pack(anchor="e", pady=(4, 0))
+        ttk.Label(inspect_box, textvariable=self.detect_detail, foreground="#526171", wraplength=875).pack(anchor="w", pady=(5, 0))
+
+        self.stock_firmware_frame = ttk.LabelFrame(main, text="Stock firmware", padding=9)
+        f1 = self.stock_firmware_frame
         f1.pack(fill="x")
         row = ttk.Frame(f1)
         row.pack(fill="x")
         self.source_entry = ttk.Entry(row, state="readonly")
         self.source_entry.pack(side="left", fill="x", expand=True)
         ttk.Button(row, text="Browse...", command=self.browse_source).pack(side="left", padx=(8, 0))
-        ttk.Button(row, text="Full Validation", command=self.full_validation).pack(side="left", padx=(8, 0))
+        ttk.Button(row, text="Validate Stock File", command=self.full_validation).pack(side="left", padx=(8, 0))
         ttk.Label(f1, textvariable=self.source_status).pack(anchor="w", pady=(6, 0))
 
-        f2 = ttk.LabelFrame(main, text="2. Rapid Trigger profile", padding=9)
+
+        # Explicit, high-contrast mode selector. Native Notebook tabs can be tiny
+        # and almost invisible under Windows theme / DPI scaling, so hide them and
+        # use two large regular Tk buttons with reliable background colors instead.
+        ttk.Style(self).layout("ModeHidden.TNotebook.Tab", [])
+        self.mode_switch = ttk.LabelFrame(
+            main, text="FIRMWARE TO INSTALL — selection does not change the keyboard", padding=(10, 8)
+        )
+        self.mode_switch.pack(fill="x", pady=(10, 3))
+        mode_row = ttk.Frame(self.mode_switch)
+        mode_row.pack(fill="x")
+        self.rt_mode_btn = tk.Button(
+            mode_row, text="RAPID TRIGGER   (RT-only)",
+            font=("Segoe UI", 11, "bold"), borderwidth=1, relief="solid",
+            cursor="hand2", padx=10, pady=12,
+            command=lambda: self._choose_mode("rt")
+        )
+        self.rt_mode_btn.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        self.hold_mode_btn = tk.Button(
+            mode_row, text="SPACEFN / GENERIC HOLD",
+            font=("Segoe UI", 11, "bold"), borderwidth=1, relief="solid",
+            cursor="hand2", padx=10, pady=12,
+            command=lambda: self._choose_mode("hold")
+        )
+        self.hold_mode_btn.pack(side="left", fill="x", expand=True, padx=(5, 0))
+        self.firmware_tabs = ttk.Notebook(main, style="ModeHidden.TNotebook")
+        self.firmware_tabs.pack(fill="x", pady=(2, 0))
+        self.rt_tab = ttk.Frame(self.firmware_tabs, padding=(3, 8))
+        self.hold_tab = ttk.Frame(self.firmware_tabs, padding=(3, 8))
+        self.firmware_tabs.add(self.rt_tab, text="Rapid Trigger (RT-only)")
+        self.firmware_tabs.add(self.hold_tab, text="SpaceFn / Generic HOLD")
+        self.firmware_tabs.bind("<<NotebookTabChanged>>", self._mode_changed)
+        self.mode_note = ttk.Label(main, text="", foreground="#526171", wraplength=880)
+        self.mode_note.pack(anchor="w", pady=(6, 0))
+
+        f2 = ttk.LabelFrame(self.rt_tab, text="Rapid Trigger profile", padding=9)
         f2.pack(fill="x", pady=(10, 0))
         r = ttk.Frame(f2)
         r.pack(fill="x")
@@ -167,7 +247,7 @@ class UnifiedGUI(tk.Tk):
         ttk.Entry(r, textvariable=self.release, width=10).pack(side="left", padx=(6, 18))
         ttk.Label(r, text="Re-press [mm]").pack(side="left")
         ttk.Entry(r, textvariable=self.repress, width=10).pack(side="left", padx=(6, 10))
-        ttk.Button(r, text="Preview", command=self.preview).pack(side="left")
+        ttk.Button(r, text="Check Settings", command=self.preview).pack(side="left")
 
         self.validation_label = ttk.Label(f2, textvariable=self.validation_status)
         self.validation_label.pack(anchor="w", pady=(5, 0))
@@ -187,11 +267,15 @@ class UnifiedGUI(tk.Tk):
         ).pack(side="left")
         ttk.Label(orow, textvariable=self.observer_state).pack(side="left", padx=(16, 0))
 
+        ttk.Label(f2, text="Observer: use the profile installed on the keyboard. Values here are expected settings, not read back from firmware.",
+                  wraplength=880).pack(anchor="w", pady=(5, 0))
+
         # HHKB v0.12 custom-slot panel. Hidden on R3S.
         self.hh_slots_frame = ttk.LabelFrame(
-            main, text="3. HHKB Dual-Role / Generic HOLD", padding=8
+            self.hold_tab, text="SpaceFn / Generic HOLD settings", padding=8
         )
 
+        self.hh_slots_frame.pack(fill="x", pady=(8, 0))
         info = ttk.Frame(self.hh_slots_frame)
         info.pack(fill="x")
         ttk.Label(
@@ -201,11 +285,11 @@ class UnifiedGUI(tk.Tk):
         ttk.Button(info, text="Load SpaceFn preset", command=self._hh_slots_load_spacefn).pack(side="right")
         ttk.Button(info, text="Load A/C/V preset", command=self._hh_slots_load_acv).pack(side="right", padx=(0, 8))
 
-        brow = ttk.Frame(self.hh_slots_frame)
-        brow.pack(fill="x", pady=(6, 6))
-        self.hh_slot_baseline_entry = ttk.Entry(brow, state="readonly")
-        self.hh_slot_baseline_entry.pack(side="left", fill="x", expand=True)
-        ttk.Button(brow, text="Browse stock A0.48...", command=self._hh_slots_browse_baseline).pack(side="left", padx=(8, 0))
+        ttk.Label(
+            self.hh_slots_frame,
+            text="Uses the stock firmware selected above. RT-only and HOLD are ALTERNATIVE builds, not a combined firmware.",
+            foreground="#785a25", wraplength=920, justify="left"
+        ).pack(anchor="w", pady=(7, 5))
         ttk.Label(self.hh_slots_frame, textvariable=self.hh_slot_baseline_status).pack(anchor="w", pady=(0, 5))
 
         grid = ttk.Frame(self.hh_slots_frame)
@@ -262,46 +346,174 @@ class UnifiedGUI(tk.Tk):
         srow = ttk.Frame(self.hh_slots_frame)
         srow.pack(fill="x", pady=(7, 0))
         self.hh_slot_summary = tk.StringVar(value="")
-        ttk.Label(srow, textvariable=self.hh_slot_summary).pack(side="left")
-        ttk.Button(srow, text="Self-test generic baseline", command=self._hh_slots_self_test).pack(side="right")
-        self.hh_slots_flash_btn = ttk.Button(
-            srow, text="Flash validated build", command=self._hh_slots_flash, state="disabled"
-        )
-        self.hh_slots_flash_btn.pack(side="right", padx=(0, 8))
-        self.hh_slots_build_btn = ttk.Button(
-            srow, text="Build & Validate", command=self._hh_slots_build
-        )
-        self.hh_slots_build_btn.pack(side="right", padx=(0, 8))
+        ttk.Label(srow, textvariable=self.hh_slot_summary, wraplength=820).pack(side="left", fill="x", expand=True)
+        ttk.Button(srow, text="Self-test HOLD", command=self._hh_slots_self_test).pack(side="right")
 
-        self.safety_frame = ttk.LabelFrame(main, text="4. Safety / activity", padding=7)
+        self.safety_frame = ttk.LabelFrame(main, text="Safety / activity", padding=7)
         self.safety_frame.pack(fill="both", expand=True, pady=(10, 0))
         f3 = self.safety_frame
-        self.log = tk.Text(f3, wrap="word", state="disabled", font=("Consolas", 9), height=20)
+        self.log = tk.Text(f3, wrap="word", state="disabled", font=("Consolas", 9), height=10)
         self.log.pack(side="left", fill="both", expand=True)
         sb = ttk.Scrollbar(f3, command=self.log.yview)
         sb.pack(side="right", fill="y")
         self.log.configure(yscrollcommand=sb.set)
 
-        prow = ttk.Frame(main)
+        prow = ttk.Frame(self.footer)
         prow.pack(fill="x", pady=(8, 0))
         self.progress = ttk.Progressbar(prow, maximum=100)
         self.progress.pack(side="left", fill="x", expand=True)
         ttk.Label(prow, textvariable=self.progress_text, width=30).pack(side="left", padx=(10, 0))
 
-        actions = ttk.Frame(main)
+        actions = ttk.Frame(self.footer)
         actions.pack(fill="x", pady=(8, 0))
-        ttk.Button(actions, text="Run self-test", command=self.self_test).pack(side="left")
+        ttk.Button(actions, text="Software Self-test", command=self.self_test).pack(side="left")
         ttk.Button(actions, text="Open Output Folder", command=self.open_output).pack(side="left", padx=(8, 0))
         self.recovery_btn = ttk.Button(actions, text="Recovery / Restore", command=self.recovery_action)
         self.recovery_btn.pack(side="left", padx=(8, 0))
 
-        ttk.Label(actions, textvariable=self.action_status).pack(side="right", padx=(0, 10))
+        ttk.Label(actions, textvariable=self.action_status).pack(side="left", padx=(14, 0))
         self.apply_btn = ttk.Button(actions, text="Build Firmware", command=self.apply)
         self.apply_btn.pack(side="right")
-
-        ttk.Label(main, textvariable=self.status_line).pack(anchor="w", pady=(6, 0))
+        self.hh_slots_flash_btn = ttk.Button(
+            actions, text="2. Install HOLD", command=self._hh_slots_flash, state="disabled"
+        )
+        self.hh_slots_build_btn = ttk.Button(
+            actions, text="1. Create HOLD File", command=self._hh_slots_build, state="disabled"
+        )
+        ttk.Label(self.footer, textvariable=self.status_line).pack(anchor="w", pady=(6, 0))
 
         self._platform_changed()
+
+    def _update_content_scrollregion(self, _event=None):
+        self.content_canvas.configure(scrollregion=self.content_canvas.bbox("all"))
+
+    def _resize_content_viewport(self, event):
+        # Width follows viewport when possible, avoiding clipped right-side fields.
+        natural_width = self.content_canvas.nametowidget(
+            self.content_canvas.itemcget(self._content_window, "window")
+        ).winfo_reqwidth()
+        self.content_canvas.itemconfigure(self._content_window, width=max(event.width, natural_width))
+        self._update_content_scrollregion()
+
+    def _install_wheel_bindings(self):
+        """Scope scrolling to the content pane, not the entire Tk application.
+
+        Each content widget gets a dedicated *binding tag* rather than a global
+        MouseWheel binding. This prevents scrolling the outer Canvas behind an
+        open ttk Combobox popdown (a separate Toplevel/Listbox on Windows).
+        """
+        content_tag = "TopreRTContentWheel"
+        self.bind_class(content_tag, "<MouseWheel>", self._on_content_mousewheel)
+        self.bind_class(content_tag, "<Button-4>", self._on_content_mousewheel)
+        self.bind_class(content_tag, "<Button-5>", self._on_content_mousewheel)
+
+        def visit(widget):
+            for child in widget.winfo_children():
+                visit(child)
+            if isinstance(widget, ttk.Combobox):
+                # A CLOSED Combobox must never change its selection merely
+                # because the pointer is over it while scrolling the page.
+                # Its popup Listbox remains independently scrollable when open.
+                for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                    widget.bind(sequence, lambda _event: "break")
+                return
+            if isinstance(widget, (tk.Text, tk.Listbox, tk.Scrollbar,
+                                   ttk.Scrollbar, ttk.Notebook)):
+                # Text / Listbox / Scrollbar owns its own scrolling.
+                # The Notebook is navigable via explicit mode buttons only.
+                return
+            if content_tag not in widget.bindtags():
+                widget.bindtags((content_tag,) + widget.bindtags())
+
+        visit(self.content_canvas)
+        # Prevent any ttk Notebook class-level wheel navigation even when
+        # the (hidden) Notebook itself receives a synthetic wheel event.
+        for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.firmware_tabs.bind(sequence, lambda _event: "break")
+
+    def _on_content_mousewheel(self, event):
+        # Only content widgets carry the custom bindtag. Dropdown popup
+        # Listboxes and the activity log deliberately do not.
+        if getattr(event, "num", None) == 4:
+            units = -1
+        elif getattr(event, "num", None) == 5:
+            units = 1
+        else:
+            delta = getattr(event, "delta", 0)
+            if not delta:
+                return "break"
+            units = -int(delta / 120) if abs(delta) >= 120 else (-1 if delta > 0 else 1)
+        # Tk Canvas can scroll into NEGATIVE coordinates when its content is
+        # shorter than the viewport. yview() still reports (0, 1), hiding
+        # the overscroll and exposing a large blank area above the GUI.
+        # Do not scroll an already fully visible page in either direction.
+        canvas = self.content_canvas
+        bbox = canvas.bbox(self._content_window)
+        if not bbox or bbox[3] - bbox[1] <= canvas.winfo_height():
+            canvas.yview_moveto(0)
+            return "break"
+        # When the content is taller than the viewport, Canvas clamps the
+        # normal scrolling range correctly. Also reset any stale negative
+        # offset left over from a prior resize or mode change.
+        if canvas.canvasy(0) < bbox[1]:
+            canvas.yview_moveto(0)
+        canvas.yview_scroll(units, "units")
+        return "break"
+
+    def _choose_mode(self, mode):
+        if self.platform.get() != PLAT_HHKB and mode != "rt":
+            return
+        self.firmware_tabs.select(self.hold_tab if mode == "hold" else self.rt_tab)
+        self._update_mode_selector()
+
+    def _update_mode_selector(self):
+        # Tk buttons (instead of theme-dependent ttk tabs) keep the selection
+        # visible on Windows at both 100% and high-DPI scaling.
+        is_hh = self.platform.get() == PLAT_HHKB
+        if is_hh:
+            if not self.mode_switch.winfo_manager():
+                self.mode_switch.pack(before=self.firmware_tabs, fill="x", pady=(10, 3))
+        else:
+            self.mode_switch.pack_forget()
+        is_hold = is_hh and self.firmware_tabs.select() == str(self.hold_tab)
+        for btn, selected in ((self.rt_mode_btn, not is_hold), (self.hold_mode_btn, is_hold)):
+            btn.configure(
+                bg="#146b50" if selected else "#e4e9ef",
+                fg="#ffffff" if selected else "#28384a",
+                activebackground="#10533f" if selected else "#cdd8e2",
+                activeforeground="#ffffff" if selected else "#182631",
+                highlightbackground="#146b50" if selected else "#a5b2c1",
+            )
+
+    def _mode_changed(self, _event=None):
+        if not hasattr(self, "apply_btn"):
+            return
+        self._update_mode_selector()
+        is_hh = self.platform.get() == PLAT_HHKB
+        is_hold = is_hh and self.firmware_tabs.select() == str(self.hold_tab)
+        self.apply_btn.pack_forget()
+        self.hh_slots_build_btn.pack_forget()
+        self.hh_slots_flash_btn.pack_forget()
+        if is_hold:
+            self.hh_slots_flash_btn.pack(side="right")
+            self.hh_slots_build_btn.pack(side="right", padx=(0, 8))
+            self.mode_note.configure(text="HOLD / SpaceFn: 1. Create a file. 2. Install it on HHKB. This replaces the RT-only build.")
+        else:
+            self.apply_btn.pack(side="right")
+            self.mode_note.configure(text=(
+                "HHKB: Create & Install RT writes to the keyboard after confirmation. Changing settings alone does not apply them."
+                if is_hh else "R3S: Create a file, then open Output Folder and install the generated .rfb with official REALFORCE software."
+            ))
+        self.after_idle(self._fit_active_tab_height)
+        self.content_canvas.yview_moveto(0)
+
+    def _fit_active_tab_height(self):
+        active = self.hold_tab if (
+            self.platform.get() == PLAT_HHKB
+            and self.firmware_tabs.select() == str(self.hold_tab)
+        ) else self.rt_tab
+        self.firmware_tabs.configure(height=active.winfo_reqheight())
+        self._update_content_scrollregion()
 
     def _append(self, text):
         self.log.configure(state="normal")
@@ -323,23 +535,94 @@ class UnifiedGUI(tk.Tk):
         self.source_entry.configure(state="readonly")
 
     def _busy(self, b):
-        if b:
+        if b or self.flash_active:
             self.apply_btn.configure(state="disabled")
         else:
             self._live_validate()
 
-    def _worker(self, fn):
-        if self.worker and self.worker.is_alive():
+    def _operation_available(self):
+        if self._closing or self.flash_active or (self.worker and self.worker.is_alive()) or (
+            self.r3_observer_proc is not None and self.r3_observer_proc.poll() is None
+        ):
             messagebox.showinfo(APP_TITLE, "Another operation is already running.")
-            return
-        self.worker = threading.Thread(target=self._worker_wrap, args=(fn,), daemon=True)
-        self.worker.start()
+            return False
+        return True
 
-    def _worker_wrap(self, fn):
+    def _lock_flash_controls(self):
+        def visit(widget):
+            for child in widget.winfo_children():
+                if isinstance(child, tk.Toplevel):
+                    continue  # Read-only snapshot windows may close independently.
+                if child.winfo_class() in {
+                    "TButton", "TEntry", "TCombobox", "TCheckbutton", "TRadiobutton",
+                    "TSpinbox", "Button", "Entry", "Checkbutton", "Radiobutton", "Spinbox",
+                }:
+                    self._flash_widget_states.append((child, child.cget("state")))
+                    child.configure(state="disabled")
+                visit(child)
+        visit(self)
+
+    def _finish_flash(self):
+        # The queue notification precedes actual thread exit by a few instructions.
+        if self.worker and self.worker.is_alive():
+            self.after(20, self._finish_flash)
+            return
+        self.flash_active = False
+        for widget, state in self._flash_widget_states:
+            widget.configure(state=state)
+        self._flash_widget_states.clear()
+        self._hh_slots_changed()  # Disarm even after a failed/partial attempt.
+        self._live_validate()
+
+    def _on_close(self):
+        if self.flash_active:
+            messagebox.showinfo(APP_TITLE,
+                "HHKB update is still running. Keep USB connected and wait for completion.\n"
+                "The window cannot close until the update worker has stopped.")
+            return
+        self.stop_event.set()
+        self._closing = True
+        if self.r3_observer_proc is not None and self.r3_observer_proc.poll() is None:
+            self.stop_observer()
+        self._close_when_idle()
+
+    def _close_when_idle(self):
+        if (self.worker and self.worker.is_alive()) or (
+            self.r3_observer_proc is not None and self.r3_observer_proc.poll() is None
+        ):
+            self.after(100, self._close_when_idle)
+            return
+        self.destroy()
+
+    def _worker(self, fn, *, flash=False):
+        if not self._operation_available():
+            return False
+        if flash:
+            # Invalidate before saving widget states so unlocking cannot restore
+            # export of an identification captured before this update attempt.
+            self.firmware_identification = None
+            self.firmware_report_btn.configure(state="disabled")
+            self.installed_firmware.set("Not verified after update attempt")
+            self.detect_detail.set("After the update stops, select Inspect firmware to query the connected keyboard again.")
+            self.flash_active = True
+            self._lock_flash_controls()
+        self.worker = threading.Thread(target=self._worker_wrap, args=(fn, flash), daemon=not flash)
+        try:
+            self.worker.start()
+        except Exception:
+            if flash:
+                self._finish_flash()
+            raise
+        return True
+
+    def _worker_wrap(self, fn, flash=False):
         try:
             fn()
         except Exception as e:
             self.q.put(("error", str(e)))
+        finally:
+            if flash:
+                self.q.put(("flash_finished", None))
 
     def _poll(self):
         try:
@@ -347,6 +630,12 @@ class UnifiedGUI(tk.Tk):
                 kind, payload = self.q.get_nowait()
                 if kind == "log":
                     self._append(payload)
+                elif kind == "flash_finished":
+                    self._finish_flash()
+                elif kind == "device_diagnostics":
+                    self.diagnostics_btn.configure(state="normal")
+                    if not self._closing:
+                        self._show_device_diagnostics(payload)
                 elif kind == "error":
                     self._append("ERROR: " + payload)
                     messagebox.showerror(APP_TITLE, payload)
@@ -355,6 +644,7 @@ class UnifiedGUI(tk.Tk):
                         self.hh_slots_build_btn.configure(state="normal")
                     if hasattr(self, "hh_slots_flash_btn"):
                         self.hh_slots_flash_btn.configure(state="disabled")
+                    self.diagnostics_btn.configure(state="normal")
                     self._busy(False)
                 elif kind == "progress":
                     value, label = payload
@@ -370,6 +660,16 @@ class UnifiedGUI(tk.Tk):
                     self.hh_validated_build_report = None
                     self.hh_slots_flash_btn.configure(state="disabled")
                     self.hh_slots_build_btn.configure(state="normal")
+                elif kind == "fw_detect_result":
+                    self.firmware_identification = payload
+                    self.installed_firmware.set(payload.category + (f"  ·  {payload.device}" if payload.device else ""))
+                    self.detect_detail.set(FW_DETECT.format_details(payload))
+                    self.firmware_report_btn.configure(state="normal")
+                    self.inspect_btn.configure(state="normal")
+                elif kind == "fw_detect_error":
+                    self.installed_firmware.set("Unknown")
+                    self.detect_detail.set(str(payload))
+                    self.inspect_btn.configure(state="normal")
                 elif kind == "observer_on":
                     self.observer_state.set(payload)
                     self.obs_start.configure(state="disabled")
@@ -380,10 +680,118 @@ class UnifiedGUI(tk.Tk):
                     self.obs_stop.configure(state="disabled")
         except queue.Empty:
             pass
+        if self.flash_active:
+            for widget, _ in self._flash_widget_states:
+                widget.configure(state="disabled")
         self.after(80, self._poll)
+
+    # ---------------- Installed firmware, conservative probe ----------------
+    def inspect_device_diagnostics(self):
+        if not self._operation_available():
+            return
+        if self.platform.get() != PLAT_HHKB:
+            messagebox.showinfo(APP_TITLE, "Device diagnostics currently supports HHKB over USB. Select HHKB first.")
+            return
+        self.diagnostics_btn.configure(state="disabled")
+        def work():
+            self.q.put(("device_diagnostics", DEVICE_DIAG.collect_hhkb(HHE)))
+        try:
+            if not self._worker(work):
+                self.diagnostics_btn.configure(state="normal")
+        except Exception:
+            self.diagnostics_btn.configure(state="normal")
+            raise
+
+    def _show_device_diagnostics(self, snapshot):
+        report = snapshot["report"]
+        display = snapshot["display"]
+        window = tk.Toplevel(self)
+        window.title("HHKB device diagnostics — read-only snapshot")
+        window.geometry("720x490")
+        window.transient(self)
+        body = ttk.Frame(window, padding=16)
+        body.pack(fill="both", expand=True)
+        text = tk.Text(body, wrap="word", height=20, font=("Segoe UI", 10))
+        text.pack(fill="both", expand=True)
+        text.insert("1.0", "\n".join([
+            "HHKB device diagnostics", f"Captured (UTC): {report['captured_at']}", "",
+            f"Model: {report['model']}",
+            f"Reported firmware revision: {report['reported_revision']}",
+            "Firmware variant: not determined by identity query",
+            "The reported revision alone does not distinguish stock / RT / HOLD.", "",
+            f"USB serial (masked): {display['usb_serial']}",
+            f"Device serial (masked): {display['firmware_serial']}",
+            f"Normal-mode identity: {report['normal_identity_check']}",
+            f"Update-mode identity: {report['updater_identity_check']}", "",
+            report["detail"], "",
+            "This is a snapshot, not an update approval. No update commands were sent.",
+            "Shared reports omit serial numbers, USB paths and raw responses.",
+        ]))
+        text.configure(state="disabled")
+        buttons = ttk.Frame(body)
+        buttons.pack(fill="x", pady=(12, 0))
+        def save():
+            path = filedialog.asksaveasfilename(parent=window, title="Save shared diagnostics",
+                defaultextension=".json", initialfile="TopreRT_HHKB_diagnostics.json",
+                filetypes=[("JSON report", "*.json")])
+            if not path:
+                return
+            try:
+                Path(path).write_text(DEVICE_DIAG.shared_report(snapshot), encoding="utf-8")
+            except OSError:
+                messagebox.showerror(APP_TITLE, "Could not save report. Choose a writable folder.", parent=window)
+                return
+            messagebox.showinfo(APP_TITLE, "Report saved without serial numbers or USB paths.", parent=window)
+        ttk.Button(buttons, text="Save shared report…", command=save).pack(side="left")
+        ttk.Button(buttons, text="Close", command=window.destroy).pack(side="right")
+
+    def inspect_installed_firmware(self):
+        if not self._operation_available():
+            return
+        if self.platform.get() != PLAT_HHKB:
+            self.installed_firmware.set("Not supported for R3S yet")
+            self.detect_detail.set("R3S firmware query requires a separate validated read-only protocol.")
+            return
+        if self.worker is not None and self.worker.is_alive():
+            self.detect_detail.set("Stop Observer / wait for the running operation before inspecting firmware.")
+            return
+        self.installed_firmware.set("Inspecting HHKB USB device...")
+        self.firmware_identification = None
+        self.firmware_report_btn.configure(state="disabled")
+        self.detect_detail.set("Read-only commands only; no updater or firmware write command.")
+        self.inspect_btn.configure(state="disabled")
+        def work():
+            try:
+                result = FW_DETECT.inspect_hhkb(HHE)
+                self.q.put(("fw_detect_result", result))
+            except Exception as exc:
+                self.q.put(("fw_detect_error", "Firmware query failed. Check USB connection and close other keyboard tools; exact version remains unknown."))
+        try:
+            started = self._worker(work)
+        except Exception:
+            self.inspect_btn.configure(state="normal")
+            self.installed_firmware.set("Query did not start")
+            raise
+        if not started:
+            self.inspect_btn.configure(state="normal")
+            self.installed_firmware.set("Query did not start")
+
+    def save_firmware_identification(self):
+        if self.firmware_identification is None:
+            return
+        path = filedialog.asksaveasfilename(parent=self, title="Save firmware identification",
+            initialfile="TopreRT_firmware_identification.json", defaultextension=".json",
+            filetypes=[("JSON report", "*.json")])
+        if path:
+            try:
+                Path(path).write_text(FW_DETECT.shared_report(self.firmware_identification), encoding="utf-8")
+            except OSError:
+                messagebox.showerror(APP_TITLE, "Could not save identification report.")
 
     # ---------------- Platform ----------------
     def _detect_platform(self):
+        if self.flash_active or self._closing:
+            return
         try:
             import hid
             r3 = [d for d in hid.enumerate(0x0853, 0x0311) if d.get("interface_number") == 2]
@@ -407,7 +815,13 @@ class UnifiedGUI(tk.Tk):
             self.status_line.set("Detection unavailable: " + str(e))
 
     def _platform_changed(self, *_):
+        self.firmware_identification = None
+        self.firmware_report_btn.configure(state="disabled")
+        self.installed_firmware.set("Not queried — select Inspect firmware")
+        self.detect_detail.set("Exact TopreRT version unknown. Metadata v1 integration remains under research.")
         plat = self.platform.get()
+        self.installed_firmware.set("Not queried — USB only; manual read-only check")
+        self.detect_detail.set("Legacy detection is experimental; no flashing performed.")
         self.source_path = None
         self.source_valid = False
         self._set_source_entry("")
@@ -416,31 +830,34 @@ class UnifiedGUI(tk.Tk):
         self.progress_text.set("")
 
         if plat == PLAT_R3S:
-            if hasattr(self, "hh_slots_frame"):
-                self.hh_slots_frame.pack_forget()
+            self.firmware_tabs.tab(self.hold_tab, state="hidden")
+            self.firmware_tabs.select(self.rt_tab)
+            self.stock_firmware_frame.configure(text="Stock firmware (R3S A0.12)")
             self.platform_note.configure(
-                text="REALFORCE R3S A0.12 · Build here → install with official REALFORCE software (recommended)"
+                text="REALFORCE R3S A0.12 · File creation here → installation in official REALFORCE software"
             )
             self.profile_combo.configure(values=list(R3_PROFILES))
             self.profile.set(next(iter(R3_PROFILES)))
-            self.apply_btn.configure(text="Build Firmware")
-            self.recovery_btn.configure(text="Recovery / Restore")
+            self.apply_btn.configure(text="Create Firmware File")
+            self.recovery_btn.configure(text="Recovery Instructions")
             self.release.set("0.60")
             self.repress.set("0.80")
         else:
-            if hasattr(self, "hh_slots_frame") and hasattr(self, "safety_frame"):
-                self.hh_slots_frame.pack(fill="x", pady=(10, 0), before=self.safety_frame)
+            self.firmware_tabs.tab(self.hold_tab, state="normal")
+            self.stock_firmware_frame.configure(text="Stock firmware (shared by RT & HOLD · A0.48)")
             self.platform_note.configure(
-                text="HHKB Professional Hybrid / Type-S (PD-KB800W) · A0.48 · built-in validated Writer"
+                text="HHKB PD-KB800W · A0.48 · Installation runs inside this app"
             )
             self.profile_combo.configure(values=list(HH_PROFILES))
             self.profile.set(next(iter(HH_PROFILES)))
-            self.apply_btn.configure(text="Apply TopreRT")
+            self.apply_btn.configure(text="Create & Install RT")
             self.recovery_btn.configure(text="Restore Stock")
             self.release.set("0.10")
             self.repress.set("0.15")
             self._auto_find_hhkb_stock()
 
+        self._sync_hhkb_stock_for_hold()
+        self._mode_changed()
         self.preview()
         self._live_validate()
 
@@ -468,31 +885,25 @@ class UnifiedGUI(tk.Tk):
                 pass
 
     # ---------------- HHKB v0.13 generic-HOLD custom slots ----------------
-    def _hh_slots_set_baseline_entry(self, path):
-        self.hh_slot_baseline_entry.configure(state="normal")
-        self.hh_slot_baseline_entry.delete(0, "end")
-        if path:
-            self.hh_slot_baseline_entry.insert(0, str(path))
-        self.hh_slot_baseline_entry.configure(state="readonly")
-
-    def _hh_slots_try_bundled_baseline(self):
-        self.hh_slot_baseline_path=None
-        self.hh_slot_baseline_status.set("Select your exact stock A0.48 HFB")
+    def _sync_hhkb_stock_for_hold(self):
+        # The RT and HOLD builders share the same exact, validated stock file.
+        self.hh_slot_baseline_path = (
+            self.source_path
+            if self.platform.get() == PLAT_HHKB and self.source_valid and self.source_path
+            else None
+        )
+        if self.hh_slot_baseline_path:
+            self.hh_slot_baseline_status.set("PASS — shared stock A0.48 validated")
+        else:
+            self.hh_slot_baseline_status.set("Select exact stock A0.48 above")
         self._hh_slots_changed()
 
+    def _hh_slots_try_bundled_baseline(self):
+        self._sync_hhkb_stock_for_hold()
+
     def _hh_slots_browse_baseline(self):
-        fn=filedialog.askopenfilename(title="Select exact stock HHKB A0.48 HFB",filetypes=[("HHKB firmware","*.hfb"),("All files","*.*")])
-        if not fn: return
-        p=Path(fn)
-        try:
-            data=p.read_bytes(); HHSLOT.validate_stock(data)
-        except Exception as exc:
-            self.hh_slot_baseline_path=None; self._hh_slots_set_baseline_entry(p)
-            self.hh_slot_baseline_status.set("REJECTED — not exact stock A0.48")
-            messagebox.showerror(APP_TITLE,str(exc)); self._hh_slots_changed(); return
-        self.hh_slot_baseline_path=p; self._hh_slots_set_baseline_entry(p)
-        self.hh_slot_baseline_status.set("PASS — exact stock A0.48 · SHA "+HHSLOT.sha256(data)[:16]+"…")
-        self._append(f"HHKB stock A0.48: PASS — {p}"); self._hh_slots_changed()
+        # Legacy callsite kept for compatibility with existing integrations.
+        self.browse_source()
 
     def _hh_slots_load_acv(self):
         vals = [("A", "A", "CTRL", "250"), ("C", "C", "CTRL", "250"), ("V", "V", "CTRL", "250")]
@@ -579,14 +990,7 @@ class UnifiedGUI(tk.Tk):
             return
         try:
             slots = self._hh_slots_collect()
-            desc = ", ".join(
-                f"{s['source_name']}→tap {s['tap_name']} / hold {s['hold_name']} [{HHSLOT.hold_support_status(s['hold_name'])}] / {s['threshold_ms']}ms"
-                for s in slots
-            )
-            self.hh_slot_summary.set(
-                f"VALID · {len(slots)}/8 enabled"
-                + (f" · {desc}" if desc else " · all disabled")
-            )
+            self.hh_slot_summary.set(f"VALID · {len(slots)}/8 HOLD slots enabled")
             ready = bool(self.hh_slot_baseline_path)
             if hasattr(self, "hh_slots_build_btn"):
                 self.hh_slots_build_btn.configure(state="normal" if ready else "disabled")
@@ -688,13 +1092,15 @@ class UnifiedGUI(tk.Tk):
         self.status_line.set("HHKB build validated — ready to flash")
         messagebox.showinfo(
             APP_TITLE,
-            "Build & validation PASS.\n\n"
-            "Flash is now enabled only for this exact SHA-locked file.\n"
+            "File creation & validation PASS. The keyboard has not been updated.\n\n"
+            "Select 2. Install HOLD to write this validated file to the keyboard.\n"
             "Changing any slot setting will disable Flash again.\n\n"
             f"SHA-256: {built_sha}\n\n{target}"
         )
 
     def _hh_slots_flash(self):
+        if not self._operation_available():
+            return
         path = self.hh_validated_build_path
         sha = self.hh_validated_build_sha
         if not path or not sha:
@@ -731,11 +1137,11 @@ class UnifiedGUI(tk.Tk):
         self.hh_slots_flash_btn.configure(state="disabled")
         self.hh_slots_build_btn.configure(state="disabled")
         self.status_line.set("HHKB flash armed — preflight starting")
-        self._worker(lambda: self._hh_slots_flash_worker(path, sha, token))
-
-    def _hh_slots_flash_worker(self, path, sha, token):
-        helper = HHKB_DIR / "hhkb_v013_validated_flasher_v0_1.py"
         baseline = self.hh_slot_baseline_path
+        self._worker(lambda: self._hh_slots_flash_worker(path, sha, token, baseline), flash=True)
+
+    def _hh_slots_flash_worker(self, path, sha, token, baseline):
+        helper = HHKB_DIR / "hhkb_v013_validated_flasher_v0_1.py"
         if not helper.exists():
             raise RuntimeError(f"Validated flasher helper missing: {helper}")
         if baseline is None or not baseline.exists():
@@ -751,7 +1157,8 @@ class UnifiedGUI(tk.Tk):
         self.q.put(("log", "FLASH PREFLIGHT — exact SHA/diff/CRC validation will run again."))
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, bufsize=1
+            text=True, errors="replace", bufsize=1,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
         )
         flash_t0 = None
         try:
@@ -792,6 +1199,13 @@ class UnifiedGUI(tk.Tk):
                     self.q.put(("status", detail))
             rc = proc.wait()
         finally:
+            # Keep the protection until the child exits, including output-read failures.
+            # Drain remaining output to avoid a full pipe blocking the writer.
+            if proc.poll() is None:
+                try:
+                    proc.communicate()
+                finally:
+                    proc.wait()
             if proc.stdout:
                 proc.stdout.close()
 
@@ -828,6 +1242,7 @@ class UnifiedGUI(tk.Tk):
             self._set_source_entry(p)
             self.source_status.set("REJECTED")
             messagebox.showerror(APP_TITLE, str(e))
+        self._sync_hhkb_stock_for_hold()
         self._live_validate()
 
     def _validate_source_bytes(self, data):
@@ -948,13 +1363,16 @@ class UnifiedGUI(tk.Tk):
         return rmm, pmm, rr, pr
 
     def _live_validate(self, *_):
+        if self.flash_active:
+            self.apply_btn.configure(state="disabled")
+            return False
         try:
             rmm, pmm, rr, pr = self._profile_values()
             self.validation_status.set(
                 f"VALID ✓   Release {rmm:g} mm → {rr} raw   |   Re-press {pmm:g} mm → {pr} raw"
             )
             ready = self.source_valid
-            self.action_status.set("Ready" if ready else "Select valid stock firmware")
+            self.action_status.set("Ready to create / install" if ready else "Select supported original stock file")
             self.apply_btn.configure(state="normal" if ready else "disabled")
             return True
         except Exception as e:
@@ -980,7 +1398,7 @@ class UnifiedGUI(tk.Tk):
                     f"Re-press   requested {pmm:g} mm -> {pr} raw (~{R3C.raw_to_mm(pr):.3f} mm actual)\n\n"
                     "Non-Space  two-pass DISARM64\n"
                     "Space #60  NO-DISARM\n\n"
-                    "Update path: official REALFORCE software is recommended." +
+                    "Settings check only. To apply: create a file and install the generated .rfb with official REALFORCE software." +
                     (
                         f"\n\nModel       {self.source_meta['model']}"
                         f"\nRT core     {self.source_meta['rt_core_status']}"
@@ -990,7 +1408,7 @@ class UnifiedGUI(tk.Tk):
                 )
             else:
                 self._set_log(
-                    "PROFILE STATUS    HARDWARE VERIFIED CORE\n\n"
+                    "SETTINGS CHECK — not applied to the keyboard\nCore validation history is shown below; this is not a test of this device.\n\n"
                     f"Release    requested {rmm:g} mm -> {rr} raw (~{HHE.raw_to_mm(rr):.3f} mm estimated)\n"
                     f"Re-press   requested {pmm:g} mm -> {pr} raw (~{HHE.raw_to_mm(pr):.3f} mm estimated)\n\n"
                     "HHKB RT core     HARDWARE VERIFIED\n"
@@ -1011,6 +1429,8 @@ class UnifiedGUI(tk.Tk):
         return d
 
     def apply(self):
+        if not self._operation_available():
+            return
         if not self.source_valid or not self.source_path:
             messagebox.showerror(APP_TITLE, "Select a valid supported stock firmware first.")
             return
@@ -1055,7 +1475,7 @@ class UnifiedGUI(tk.Tk):
         messagebox.showinfo(
             APP_TITLE,
             "R3S firmware build completed.\n\n"
-            "Recommended next step: update the generated .rfb with the official REALFORCE software.\n\n"
+            "Next: Open Output Folder and select the generated .rfb in official REALFORCE software. The keyboard has not been updated.\n\n"
             f"{target}"
         )
 
@@ -1072,7 +1492,7 @@ class UnifiedGUI(tk.Tk):
 
         if not messagebox.askyesno(
             APP_TITLE,
-            "Apply TopreRT to the connected HHKB?\n\n"
+            "Create and install RT firmware on the connected HHKB?\n\n"
             f"Release: {rr} raw (~{HHE.raw_to_mm(rr):.3f} mm estimated)\n"
             f"Re-press: {pr} raw (~{HHE.raw_to_mm(pr):.3f} mm estimated)\n\n"
             "Do not disconnect USB or let the PC sleep during the update."
@@ -1100,9 +1520,10 @@ class UnifiedGUI(tk.Tk):
             self._hhkb_flash(image)
             self.q.put(("status", "HHKB TopreRT applied — reconnect verified"))
             self.q.put(("busy_off", None))
-        self._worker(work)
+        self._worker(work, flash=True)
 
     def _hhkb_flash(self, image):
+        from hhkb_update_identity import DeviceBinding
         self.flash_t0 = None
         self.flash_rate = None
         e1, e2, e3 = HHE.build_packets(image)
@@ -1118,6 +1539,7 @@ class UnifiedGUI(tk.Tk):
             if not typ.startswith("PD-KB8"):
                 raise HHE.Reject("connected device is not an HHKB 800-series")
             self.q.put(("log", f"Connected: {typ}"))
+            binding = DeviceBinding.capture(desc, dev, ident1[0])
             self.q.put(("progress", (7, "Entering updater")))
             HHE.req(dev, HHE.packet(0xE0), bytes([0x55,0x55,0xE0,0,0,0]))
         finally:
@@ -1125,8 +1547,10 @@ class UnifiedGUI(tk.Tk):
 
         self.q.put(("progress", (10, "Waiting for updater")))
         time.sleep(10)
-        dev = HHE.open_dev(hid, HHE.wait_one(hid, 10))
+        desc = HHE.wait_one(hid, 10)
+        dev = HHE.open_dev(hid, desc)
         try:
+            binding.verify_usb(desc, dev, "Updater before E1", lambda: HHE.query(dev, 0x02))
             self.q.put(("progress", (15, "Starting transfer")))
             HHE.req(dev, e1, bytes([0x55,0x55,0xE1,0,0,0]))
             total = len(e2)
@@ -1159,9 +1583,12 @@ class UnifiedGUI(tk.Tk):
 
         self.q.put(("progress", (92, "Reconnecting · up to ~10s")))
         time.sleep(10)
-        dev = HHE.open_dev(hid, HHE.wait_one(hid, 10))
+        desc = HHE.wait_one(hid, 10)
+        dev = HHE.open_dev(hid, desc)
         try:
-            HHE.identity(dev)
+            final_info = HHE.identity(dev)[0]
+            binding.verify_usb(desc, dev, "Normal reconnect", lambda: final_info)
+            binding.verify_firmware(final_info)
         finally:
             dev.close()
         self.q.put(("progress", (100, "Reconnect PASS")))
@@ -1169,6 +1596,8 @@ class UnifiedGUI(tk.Tk):
 
     # ---------------- Observer ----------------
     def start_observer(self):
+        if not self._operation_available():
+            return
         if not self._live_validate():
             messagebox.showerror(APP_TITLE, "Fix the RT profile first.")
             return
@@ -1404,7 +1833,8 @@ class UnifiedGUI(tk.Tk):
         self._worker(guarded_work)
 
     def stop_observer(self):
-        if self.platform.get() == PLAT_R3S:
+        self.stop_event.set()
+        if self.r3_observer_proc is not None and self.r3_observer_proc.poll() is None:
             proc = self.r3_observer_proc
             if proc is not None and proc.poll() is None:
                 try:
@@ -1424,6 +1854,8 @@ class UnifiedGUI(tk.Tk):
 
     # ---------------- Recovery / tests ----------------
     def recovery_action(self):
+        if not self._operation_available():
+            return
         if self.platform.get() == PLAT_R3S:
             messagebox.showinfo(
                 APP_TITLE,
@@ -1442,7 +1874,7 @@ class UnifiedGUI(tk.Tk):
         except Exception as e:
             messagebox.showerror(APP_TITLE, str(e))
             return
-        if not messagebox.askyesno(APP_TITLE, "Restore exact stock HHKB A0.48?"):
+        if not messagebox.askyesno(APP_TITLE, "Install original HHKB A0.48?\n\nThis writes firmware and removes RT/HOLD features. It is not a settings reset.\nKeep USB connected until completion."):
             return
         self._busy(True)
         self.progress["value"] = 0
@@ -1452,7 +1884,7 @@ class UnifiedGUI(tk.Tk):
             self._hhkb_flash(stock)
             self.q.put(("status", "HHKB stock A0.48 restored — reconnect verified"))
             self.q.put(("busy_off", None))
-        self._worker(work)
+        self._worker(work, flash=True)
 
     def self_test(self):
         try:
@@ -1467,8 +1899,8 @@ class UnifiedGUI(tk.Tk):
                 if self.source_valid and self.source_path:
                     data = self.source_path.read_bytes()
                     R3P.validate_source(data)
-                    o, _ = R3P.build(data, 306, 408)
-                    if R3C.sha256(o) != R3C.STABLE_OUTPUT_SHA256:
+                    o, meta = R3P.build(data, 306, 408)
+                    if R3C.sha256(o) != R3C.STABLE_OUTPUT_SHA256_BY_MODEL[meta["source_model"]]:
                         raise R3C.Reject("stable regression SHA mismatch")
                     lines += ["stock validation: PASS", "stable regression: PASS"]
             else:

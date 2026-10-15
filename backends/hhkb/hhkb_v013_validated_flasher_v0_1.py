@@ -176,9 +176,9 @@ def open_device(hid, desc):
 
 def tx(dev, payload):
     # Windows hidapi: prepend report-ID byte 0 to the 64-byte payload.
-    n = dev.write(bytes([0]) + payload)
-    if n <= 0:
-        raise RuntimeError("HID write failed")
+    report = bytes([0]) + payload
+    if dev.write(report) != len(report):
+        raise RuntimeError("HID write incomplete; update stopped")
 
 def rx(dev, timeout=TIMEOUT_MS):
     r = bytes(dev.read(64, timeout))
@@ -190,11 +190,7 @@ def request(dev, payload, expected_prefix):
     tx(dev, payload)
     r = rx(dev)
     if not r.startswith(expected_prefix):
-        raise RuntimeError(
-            "Unexpected response\n"
-            f"expected prefix: {expected_prefix.hex(' ')}\n"
-            f"received       : {r.hex(' ')}"
-        )
+        raise RuntimeError(f"Unexpected HID response for command {payload[2]:02X}; update stopped")
     return r
 
 def cmd_open():
@@ -276,14 +272,13 @@ def do_flash(fw, e1, e2_packets, e3):
         info, dips, mode = ident1
         print("Type       :", info["type"])
         print("Revision   :", info["revision"])
-        print("Serial     :", info["serial"])
-        print("Info tail  :", info["tail"].hex(" "))
-        print("DIP payload:", dips["payload"].hex(" "))
-        print("Mode data  :", mode["payload"].hex(" "))
+        print("Serial     : [hidden]")
 
         if not info["type"].startswith("PD-KB8"):
             raise RuntimeError("Refusing: device does not look like an HHKB 800-series keyboard")
 
+        from hhkb_update_identity import DeviceBinding
+        binding = DeviceBinding.capture(desc, dev, info["payload"])
         # GUI already required an exact SHA-derived confirmation phrase.
         # E0: enter application firmware-update state.
         print("E0: entering firmware-update state...")
@@ -298,6 +293,7 @@ def do_flash(fw, e1, e2_packets, e3):
     print(f"Updater interface PID={desc.get('product_id'):04X}")
     dev = open_device(hid, desc)
     try:
+        binding.verify_usb(desc, dev, "Updater before E1", lambda: query_info(dev)["payload"])
         print("E1: start...")
         request(dev, e1, bytes([0x55,0x55,0xE1,0,0,0]))
 
@@ -306,10 +302,7 @@ def do_flash(fw, e1, e2_packets, e3):
             r = request(dev, p, bytes([0x55,0x55,0xE2,0,0,2]))
             expected = n.to_bytes(2, "little")
             if r[6:8] != expected:
-                raise RuntimeError(
-                    f"E2 ACK counter mismatch at packet {n}: "
-                    f"got {r[6:8].hex(' ')}, expected {expected.hex(' ')}"
-                )
+                raise RuntimeError(f"E2 ACK counter mismatch at packet {n}; update stopped")
             if n % 50 == 0 or n == len(e2_packets)-1:
                 pct = (n+1)*100/len(e2_packets)
                 print(f"  {n+1:4d}/{len(e2_packets)}  {pct:5.1f}%")
@@ -328,11 +321,12 @@ def do_flash(fw, e1, e2_packets, e3):
         # Do not require the UI version to change; DIAG is still A0.48.
         request(dev, cmd_open(), bytes([0x55,0x55,0x01,0,0,0]))
         info = query_info(dev)
+        binding.verify_usb(desc, dev, "Normal reconnect", lambda: info["payload"])
+        binding.verify_firmware(info["payload"])
         print("Reconnect OK.")
         print("Type     :", info["type"])
         print("Revision :", info["revision"])
-        print("Serial   :", info["serial"])
-        print("Info tail:", info["tail"].hex(" "))
+        print("Serial   : [hidden]")
     finally:
         dev.close()
 

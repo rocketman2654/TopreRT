@@ -230,8 +230,8 @@ def self_test(input_path=None):
     if input_path:
         data = Path(input_path).read_bytes()
         validate_source(data)
-        out, _ = build(data, 306, 408)
-        if C.sha256(out) != C.STABLE_OUTPUT_SHA256:
+        out, meta = build(data, 306, 408)
+        if C.sha256(out) != C.STABLE_OUTPUT_SHA256_BY_MODEL[meta["source_model"]]:
             raise C.Reject("self-test stable image SHA mismatch")
         tests.append("stock validation")
         tests.append("stable byte regression")

@@ -1,3 +1,5 @@
+> **Unreleased HOLD inspection fix:** rc3 HOLD/SpaceFn users should avoid **Inspect firmware** until a reviewed fix is released. This development branch replaces a RAM-initializing query with a snapshot. RT regression was user-confirmed; HOLD hardware validation is pending. [Details / 한국어 안내](docs/HOLD_QUERY_FIX.md).
+
 # TopreRT
 **Rapid Trigger toolkit for REALFORCE R3S and HHKB Professional Hybrid / Hybrid Type-S**
 

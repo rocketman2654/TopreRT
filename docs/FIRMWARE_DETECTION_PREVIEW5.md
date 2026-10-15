@@ -1,7 +1,7 @@
 # Firmware Detection Preview 5 (experimental)
 
 - Inspect installed firmware on HHKB USB (MI_02) with an explicit button.
-- Read-only HID identity (0x01/0x02/0x05/0x06), legacy 0x99 telemetry, and legacy HOLD canary (0x99 with C1 A1) only after a valid telemetry signature.
+- Read-only HID identity (0x01/0x02/0x05/0x06), legacy 0x99 telemetry, and legacy HOLD snapshot (0x99 with C1 52; never fall back to A1) only after a valid telemetry signature.
 - No E0/E1/E2/E3, no firmware writes, no EEPROM/Flash changes.
 - Legacy HOLD and RT can share the same 0x99 telemetry response; legacy RT must not be asserted from that response alone.
 - A verified HOLD canary marks legacy Dual-Role/HOLD, not the exact release or slot configuration.

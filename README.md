@@ -1,3 +1,5 @@
+> **v0.3.0-rc4 — HOLD inspection correction:** use a snapshot instead of initializing live HOLD RAM. Updating this PC app does not require reflashing the keyboard. One PD-KB800W passed user-reported RT and SpaceFn inspection checks; other configurations remain unverified. [Release notes / 한국어](docs/RELEASE_NOTES_v0.3.0-rc4.md).
+
 # TopreRT
 **Rapid Trigger toolkit for REALFORCE R3S and HHKB Professional Hybrid / Hybrid Type-S**
 

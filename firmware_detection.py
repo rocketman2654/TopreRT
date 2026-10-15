@@ -45,7 +45,7 @@ def classify_responses(plain: bytes, specific: bytes | None, device: str = "") -
     """Pure response classifier; does not perform I/O or assume stock on timeout."""
     if len(plain) < 16 or not plain.startswith(RT_OBSERVER_PREFIX):
         return ProbeResult("Unknown", "No validated TopreRT telemetry response (not proof of stock).", device)
-    if specific is not None and len(specific) >= 26 and specific.startswith(HOLD_CANARY_PREFIX):
+    if specific is not None and 26 <= len(specific) <= 64 and specific.startswith(HOLD_CANARY_PREFIX) and specific[9] == 0x52:
         return ProbeResult("Legacy Dual-Role / HOLD", "HOLD-family signature observed; exact build and SpaceFn configuration are unknown.", device, "Response observed", evidence="RT telemetry + CNY legacy signature")
     return ProbeResult("Legacy TopreRT", "RT telemetry observed; this does not prove RT-only firmware or identify an RT/HOLD release.", device, "Response observed", evidence="RT telemetry signature")
 
@@ -81,10 +81,10 @@ def inspect_hhkb(hhe) -> ProbeResult:
             return finish(ProbeResult("Unknown", "No telemetry response; may be stock, unsupported or unavailable. Not proof of stock.", model))
         if len(plain) < 16 or not plain.startswith(RT_OBSERVER_PREFIX):
             return finish(classify_responses(plain, None, model))
-        # Only send the legacy-specific *response* query after the confirmed
-        # TopreRT telemetry prefix. No flash or non-volatile writes involved.
-        hhe.tx(dev, hhe.packet(0x99, b"\xC1\xA1"))
+        # C1 A1 initializes live HOLD RAM. Use the existing snapshot path.
+        # Unsupported/failed snapshots must never fall back to A1.
         try:
+            hhe.tx(dev, hhe.packet(0x99, b"\xC1\x52"))
             specific = hhe.rx(dev, 750)
         except Exception:
             specific = None

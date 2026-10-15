@@ -9,6 +9,8 @@ import firmware_detection as fd
 
 
 def response(prefix, size):
+    if prefix == fd.HOLD_CANARY_PREFIX and size >= 26:
+        return (prefix + b"\x52").ljust(size, b"\0")
     return prefix.ljust(size, b"\0")
 
 
@@ -49,7 +51,7 @@ class IdentificationTests(unittest.TestCase):
         hhe = self.fake_engine()
         hhe.rx.side_effect = [response(fd.RT_OBSERVER_PREFIX, 16), response(fd.HOLD_CANARY_PREFIX, 26)]
         result = fd.inspect_hhkb(hhe)
-        self.assertEqual([call.args for call in hhe.packet.call_args_list], [(0x99,), (0x99, b"\xc1\xa1")])
+        self.assertEqual([call.args for call in hhe.packet.call_args_list], [(0x99,), (0x99, b"\xc1\x52")])
         self.assertEqual(result.reported_revision, "A3")
         self.assertIn("Unknown", result.exact_version)
         report = fd.shared_report(result)
@@ -79,3 +81,26 @@ class IdentificationTests(unittest.TestCase):
         self.assertIn("A3 (not the TopreRT version)", text)
         self.assertIn("Exact TopreRT version: Unknown", text)
         self.assertIn("Metadata v1: Not queried", text)
+
+
+    def test_snapshot_tx_and_rx_failures_never_send_initialization(self):
+        for failure in ("tx", "rx"):
+            hhe = self.fake_engine()
+            hhe.rx.side_effect = [response(fd.RT_OBSERVER_PREFIX, 16), TimeoutError("unavailable")]
+            if failure == "tx":
+                hhe.tx.side_effect = [None, TimeoutError("unavailable")]
+            result = fd.inspect_hhkb(hhe)
+            self.assertEqual(result.category, "Legacy TopreRT")
+            self.assertEqual([call.args for call in hhe.packet.call_args_list], [(0x99,), (0x99, b"\xc1\x52")])
+            hhe.open_dev.return_value.close.assert_called_once()
+
+    def test_stale_initialization_and_unknown_reply_do_not_identify_hold(self):
+        for operation in (0xA1, 0, 0xFF):
+            hhe = self.fake_engine()
+            specific = (fd.HOLD_CANARY_PREFIX + bytes([operation])).ljust(26, b"\0")
+            hhe.rx.side_effect = [response(fd.RT_OBSERVER_PREFIX, 16), specific]
+            self.assertEqual(fd.inspect_hhkb(hhe).category, "Legacy TopreRT")
+
+    def test_oversized_snapshot_does_not_identify_hold(self):
+        result = fd.classify_responses(response(fd.RT_OBSERVER_PREFIX, 16), response(fd.HOLD_CANARY_PREFIX, 65))
+        self.assertEqual(result.category, "Legacy TopreRT")

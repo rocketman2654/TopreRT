@@ -50,7 +50,7 @@ except ImportError:
     sys.path.insert(0, str(APP_DIR))
     import hhkb_v013_generic_hold_builder_v0_2_rc2 as HHSLOT
 
-APP_TITLE = "TopreRT GUI — Preview 2026.10.15"
+APP_TITLE = "TopreRT GUI — v0.3.0-rc4"
 PLAT_R3S = "REALFORCE R3S"
 PLAT_HHKB = "HHKB Professional Hybrid"
 

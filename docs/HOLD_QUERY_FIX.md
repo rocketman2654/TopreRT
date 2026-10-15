@@ -1,4 +1,4 @@
-# HOLD inspection correction — unreleased
+# HOLD inspection correction — v0.3.0-rc4
 
 The rc3 Inspect firmware operation sends C1 A1 after common telemetry. Static analysis of the exact HHKB A0.48 Generic HOLD core shows that this request initializes 16 bytes at 0x20004FF0 also used by its HOLD state machine. This is a RAM side effect, not a flash write. No typing failure or flash corruption has been reproduced on hardware.
 
@@ -10,7 +10,7 @@ Static evidence: in the audited HOLD derivation, the wrapper at 0x0801EAD0 route
 
 Validation: 64 offline app tests passed locally on Windows/Python 3.12. Added cases cover transmit/receive failure without initialization fallback, stale A1/unknown markers and oversized snapshot replies. On 2026-10-15 the user confirmed the isolated candidate works with RT installed; a screenshot shows PD-KB800W, revision A3 and common RT telemetry. The earlier screenshot with zero HHKB interfaces was not a successful device test. No new firmware was installed for this RT check.
 
-HOLD snapshot hardware validation remains pending. A same-device RT check is not HOLD verification. A future controlled trial should compare existing tap/hold behavior before and after inspection with Observer/official tools closed. Firmware installation requires a separate concrete plan. Keep rc3 tags/assets intact and publish any approved correction under a new version.
+Follow-up on 2026-10-15: the user installed the verified SpaceFn 250ms one-slot candidate, confirmed long-press Fn behavior, then supplied a HOLD identification screenshot and reported it appeared to work. Finalization and normal reconnect completion are visible in the screenshot. The user separately reported occasional delayed spaces appearing after the next character; this input-order limitation is not fixed here. Coverage is limited to this one PD-KB800W/configuration. See RELEASE_NOTES_v0.3.0-rc4.md. A same-device RT check alone is not HOLD verification. A future controlled trial should compare existing tap/hold behavior before and after inspection with Observer/official tools closed. Firmware installation requires a separate concrete plan. Keep rc3 tags/assets intact and publish any approved correction under a new version.
 
 ## 한국어 안내
 

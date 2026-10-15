@@ -172,6 +172,13 @@ def validate_slots(slots: list[dict]):
         tap = cfg["tap"]
         hold = cfg["hold"]
 
+        for field in ("source", "tap", "hold"):
+            if type(cfg[field]) is not int or cfg[field] not in INDEX_TO_NAME:
+                raise Reject(f"SLOT{n}: unsupported {field} key index")
+        threshold = cfg.get("threshold_ms")
+        if type(threshold) is not int or not 1 <= threshold <= 0xFFFF:
+            raise Reject(f"SLOT{n}: threshold must be 1..65535 ms")
+
         if source in BLOCKED_SOURCE_TAP:
             raise Reject(f"SLOT{n}: LSHIFT source is not supported")
         if tap in BLOCKED_SOURCE_TAP:

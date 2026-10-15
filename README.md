@@ -1,7 +1,9 @@
 # TopreRT
 **Rapid Trigger toolkit for REALFORCE R3S and HHKB Professional Hybrid / Hybrid Type-S**
 
-TopreRT is an unofficial toolkit that leverages the continuous capacitive sensing of Topre switches—specifically on REALFORCE and HHKB models—to enable **Rapid Trigger (RT)** dynamic actuation while preserving stock sensor processing. It delivers an end-to-end workflow for Topre Rapid Trigger, covering firmware patching, validation, live diagnostics, and recovery guidance.
+TopreRT is an unofficial Windows toolkit for creating Rapid Trigger firmware for supported REALFORCE R3S and HHKB keyboards. It validates user-supplied stock firmware, provides an interface for configuring RT or HHKB HOLD/SpaceFn, and includes a live sensor Observer. **R3S files are installed through official REALFORCE software; HHKB firmware is installed by the updater inside TopreRT.**
+
+[한국어 사용 설명서](docs/USER_GUIDE_KO.md) · [Project introduction / 소개 문구](docs/PROJECT_INTRO.md)
 
 > **Warning:** Custom firmware always carries a risk of boot failure or bricking. Keep an exact stock firmware image for your device, use a stable USB connection, and **never disconnect the keyboard or suspend/reboot your PC** during an update.
 
@@ -11,11 +13,13 @@ TopreRT is an unofficial toolkit that leverages the continuous capacitive sensin
 
 ## Project Status
 
+**Current branch: diagnostics and update-safety preview.** This is a source distribution for Windows. On 2026-10-15, one PD-KB800W passed a complete stock A0.48 restore and RT R60/P90 reinstallation, including updater/normal identity checks and user-confirmed typing, official-tool recognition after stock restore, and Observer/RT identification after RT restore. RT installation exercised the actual GUI writer worker through a local harness. Other models, the HOLD writer, interrupted-update recovery and the full GUI button flow remain unverified. See [preview release notes](docs/RELEASE_NOTES_DIAGNOSTICS_PREVIEW.md) and the [hardware validation plan](docs/HARDWARE_VALIDATION_PLAN.md).
+
 | Device | Firmware | RT Core | Observer / Writer |
 |---|---|---|---|
 | **REALFORCE R3S** (R3SB) | A0.12 | Hardware verified | Hardware verified |
 | **REALFORCE R3S** (R3SA / R3SC / R3SD) | A0.12 | Binary verified | Observer key map not hardware validated |
-| **HHKB Professional Hybrid / Hybrid Type-S** (PD-KB800W) | A0.48 | Hardware verified | Hardware verified |
+| **HHKB Professional Hybrid / Hybrid Type-S** (PD-KB800W) | A0.48 | Prior core hardware results retained | Legacy Observer: user-tested; stock/RT cycle passed on one device (see validation plan) |
 
 *Exact stock SHA-256 values and model-specific validation details for the R3S are documented in [`backends/r3s/SUPPORTED_FIRMWARE.md`](backends/r3s/SUPPORTED_FIRMWARE.md).*
 
@@ -39,32 +43,44 @@ TopreRT is an unofficial toolkit that leverages the continuous capacitive sensin
 ## Requirements
 
 * **OS:** Windows 10 / 11
-* **Python:** 3.10+ (with Windows Python Launcher `py`)
+* **Python:** Python 3.12 recommended/tested, with Windows Python Launcher `py` and Tkinter
 * **Libraries:** `hidapi`, `Tkinter` (included with standard Windows Python installers)
 
 Install dependencies using:
 
 ```powershell
-py -m pip install -r requirements.txt
+.\Setup_Demo.bat
 ```
 ## Quick start
 
-1. Clone or download this repository.
-2. Launch the application by double-clicking `Start_TopreRT_GUI.bat`, or running:
+1. Extract the complete package to a writable folder. Install **Python 3.12 with the Python Launcher and Tkinter**.
+2. Run `Setup_Demo.bat` in that folder once. It installs USB dependencies into the app's private environment. Start the app with `Start_TopreRT_GUI.bat`.
+3. Connect the keyboard by USB and select its family. Supply your supported **original stock firmware**: model-specific R3S A0.12 `.rfb`, or HHKB PD-KB800W A0.48 `.hfb`. Do not select an earlier TopreRT output as the stock input. Firmware files are not included.
+4. Choose the installation path below. Changing a profile or pressing **Check Settings** does not change the keyboard.
 
-```powershell
-py .\toprert_unified_gui.py
-```
+| Path | In TopreRT | Next step |
+|---|---|---|
+| R3S Rapid Trigger | Set distances → **Create Firmware File** | **Open Output Folder** → select the newly generated `.rfb` in official REALFORCE software and install it there |
+| HHKB Rapid Trigger | Set distances → **Create & Install RT** → confirm | TopreRT generates the image and installs it using its built-in updater; wait for normal reconnect |
+| HHKB HOLD / SpaceFn | Select **SPACEFN / GENERIC HOLD**, configure slots → **1. Create HOLD File** → **2. Install HOLD** → enter the confirmation phrase | Wait for normal reconnect, then check the configured tap/hold behavior |
 
-3. Select your device model `REALFORCE R3S` or `HHKB Professional Hybrid`.
-4. Select your **exact stock firmware file**. (TopreRT verifies the file using SHA-256 and structural analysis rather than relying on the filename).
-5. Select a preset or set custom Release / Re-press threshold values.
-6. Build the validated output firmware.
-7. Flashing your device:
+For R3S, file creation is not installation. Choose the newly generated `.rfb`, not the original stock image or `.manifest.json`. Do not assume the official updater accepts every version combination; if it rejects the file, record the message and app/model version before proceeding.
 
-    REALFORCE R3S: Use the **official REALFORCE Software** to flash the built image. TopreRT does not act as a flasher for R3S devices.
+For HHKB, close Observer and other keyboard tools before installing. Keep USB connected and the PC awake until completion. No separate updater launch or second installation in the official HHKB app is required. The tested stock/RT cycle covers one PD-KB800W; see [hardware coverage](docs/HARDWARE_RESULT_20261015.md). HOLD installation and interrupted-update recovery have separate, unverified coverage in this preview.
 
-    HHKB: Use the built-in TopreRT writer, which performs candidate revalidation, device-identity preflight, `E0/E1/E2/E3` update sequencing, per-packet ACK checking, and reconnect verification.
+`output` is inside the folder of the app you are running. Use **Open Output Folder** to avoid picking files from an older copy. HHKB output files are retained as artifacts; RT installation already happens in the same operation.
+
+### Settings, inspection and completion
+
+- **Release / Re-press:** RT movement thresholds, with estimated mm conversions. These are not an independent initial-actuation-point control. Applying changed values requires creating/installing firmware again.
+- **Check Settings / Validate Stock File / Software Self-test:** inspect settings, validate the input file or check software. They do not install firmware or prove that the connected keyboard passes every hardware test.
+- **Detect:** find connected keyboard families. **Device diagnostics:** inspect HHKB identity. **Inspect firmware:** query the HHKB firmware family. These are read-only operations; firmware inspection is not yet supported for R3S.
+- **Observer:** watch sensor responses using the profile selected in the GUI as expected values. Use the same profile you installed; thresholds are not automatically read back from the keyboard. Stop Observer before inspection or installation.
+- **Installed firmware:** the last inspection result. Legacy TopreRT can be recognized while its exact release remains unknown. A3 is a device-reported revision, not a TopreRT version; no response is not proof of stock firmware.
+- **Restore Stock (HHKB):** writes original firmware and removes RT/HOLD. It is not a settings reset or a universal repair for an unresponsive keyboard. **Recovery Instructions (R3S)** opens guidance only.
+- **After installation:** confirm normal typing. For RT, check Observer responses; for HOLD, check the configured short-press/long-press behavior. A reconnect message alone is not a complete functional test.
+
+RT-only and HOLD/SpaceFn are alternative builds. Selecting a mode chooses what to install next; it does not report or switch the currently installed firmware. Metadata version queries and independent initial-press adjustment remain research features, not this preview's installation workflow.
 
 ## Stable Profiles
 
@@ -158,7 +174,7 @@ Users must supply their own stock firmware images locally. TopreRT will only pro
 ## Known Limitations
 
 - R3S support: Currently limited strictly to the **A0.12** family.
-- R3S Hardware verification: R3SB is fully hardware-verified. R3SA, R3SC, and R3SD variants are binary-verified only.
+- R3S Hardware verification: R3SB has recorded hardware results for the documented profiles. R3SA, R3SC, and R3SD variants are binary-verified only.
 - R3S Observer maps: Physical key mapping for R3SA / R3SC / R3SD Observer modes is not yet hardware-validated.
 - R3S Spacebar: A rare missed-press edge-case remains under investigation.
 - HHKB support: Currently limited strictly to **PD-KB800W A0.48**.

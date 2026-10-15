@@ -370,8 +370,9 @@ def open_dev(hid, desc):
 
 
 def tx(dev, p):
-    if dev.write(bytes([0]) + p) <= 0:
-        raise Reject("HID write failed")
+    report = bytes([0]) + p
+    if dev.write(report) != len(report):
+        raise Reject("HID write incomplete; update stopped")
 
 
 def rx(dev, timeout=TIMEOUT_MS):
@@ -385,12 +386,14 @@ def req(dev, p, prefix):
     tx(dev, p)
     r = rx(dev)
     if not r.startswith(prefix):
-        raise Reject("unexpected HID response: " + r.hex(" "))
+        raise Reject(f"Unexpected HID response for command {p[2]:02X}; update stopped")
     return r
 
 
 def query(dev, c):
     r = req(dev, packet(c), bytes([0x55, 0x55, c, 0, 0]))
+    if len(r) < 6 or r[5] > 58 or len(r) < 6 + r[5]:
+        raise Reject("truncated HID query response")
     n = r[5]
     return bytes(r[6:6+n])
 
@@ -427,6 +430,7 @@ def device_status():
 
 
 def flash_image(image: bytes, confirmation: str, label: str):
+    from hhkb_update_identity import DeviceBinding
     # image must already have been fail-closed validated by caller.
     e1, e2, e3 = build_packets(image)
     hid = load_hid()
@@ -446,6 +450,7 @@ def flash_image(image: bytes, confirmation: str, label: str):
         print("DIP data  :", ident1[1].hex(" "))
         print("Mode data :", ident1[2].hex(" "))
         print("WARNING   : do not disconnect USB or allow the PC to sleep.")
+        binding = DeviceBinding.capture(desc, dev, ident1[0])
 
         phrase = input(f'Type exactly "{confirmation}" to continue: ')
         if phrase != confirmation:
@@ -463,6 +468,7 @@ def flash_image(image: bytes, confirmation: str, label: str):
     dev = open_dev(hid, desc)
 
     try:
+        binding.verify_usb(desc, dev, "Updater before E1", lambda: query(dev, 0x02))
         print("E1: start...")
         req(dev, e1, bytes([0x55, 0x55, 0xE1, 0, 0, 0]))
         print("E2: sending", len(e2), "packets...")
@@ -483,7 +489,9 @@ def flash_image(image: bytes, confirmation: str, label: str):
     desc = wait_one(hid, 10)
     dev = open_dev(hid, desc)
     try:
-        identity(dev)
+        final_info = identity(dev)[0]
+        binding.verify_usb(desc, dev, "Normal reconnect", lambda: final_info)
+        binding.verify_firmware(final_info)
     finally:
         dev.close()
 

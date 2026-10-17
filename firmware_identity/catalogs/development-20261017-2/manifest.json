@@ -1,0 +1,29 @@
+{
+  "catalog_version": "development-20261017-2",
+  "channel": "Development",
+  "files_sha256": {
+    "build_catalog.json": "4740b20740eff39d163c708e298acbd5f37c28f6ca80d9621e59972b5de79556",
+    "known_profiles.json": "6e3803914ba25ad1da3e5a9c3221d41b713c2d1f0446e86a2def3b13a0b12a6b"
+  },
+  "hardware_trial_build_ids": [
+    "BA90567B",
+    "ECC9B8A2"
+  ],
+  "new_default_GUI_builds": [
+    {
+      "build_id_hex": "91F70529",
+      "family": "rt_only",
+      "hardware_tested": false
+    },
+    {
+      "build_id_hex": "BCEB56DD",
+      "family": "hold",
+      "hardware_tested": false
+    }
+  ],
+  "policy": "Immutable per-version catalog. Generated custom builds are separate records; metadata is not settings readback.",
+  "previous_catalog_version": "development-20261017-1",
+  "recorded_at_utc": "2026-10-17T12:27:56.269508+00:00",
+  "release_version": null,
+  "schema": 1
+}

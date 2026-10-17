@@ -153,16 +153,21 @@ class DiagnosticsTests(unittest.TestCase):
                 self.assertEqual(str(root.inspect_btn.cget("state")), "normal")
                 self.assertEqual(root.installed_firmware.get(), previous_label)
                 root.r3_observer_proc = None
-                identification = gui.FW_DETECT.ProbeResult("Legacy TopreRT", "test evidence", reported_revision="A3")
+                from dataclasses import replace
+                identification = replace(gui.FW_DETECT.classify_responses(
+                    gui.FW_DETECT.RT_OBSERVER_PREFIX.ljust(16, b"\0"), None, "PD-KB800W"),
+                    reported_revision="A3")
                 root.q.put(("fw_detect_result", identification))
                 root._poll()
                 self.assertIn("Exact TopreRT version: Unknown", root.detect_detail.get())
+                self.assertIn("RT/HOLD not distinguished", root.installed_firmware.get())
                 self.assertEqual(str(root.firmware_report_btn.cget("state")), "normal")
                 with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parent) as folder:
                     report_path = Path(folder) / "identification.json"
                     with patch.object(gui.filedialog, "asksaveasfilename", return_value=str(report_path)):
                         root.save_firmware_identification()
                     self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))["reported_revision"], "A3")
+                    self.assertEqual(json.loads(report_path.read_text(encoding="utf-8"))["firmware_family"], "toprert_unspecified")
                 root.platform.set(gui.PLAT_R3S)
                 self.assertIsNone(root.firmware_identification)
                 self.assertEqual(str(root.firmware_report_btn.cget("state")), "disabled")

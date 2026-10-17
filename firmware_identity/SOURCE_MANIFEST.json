@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "channel": "Development",
+  "source_scope": "Reviewed one-shot reader copied for standalone Development GUI; original firmware/research sources preserved",
+  "files": {
+    "codec.py": {
+      "source": "research/firmware_identity_mvp/codec.py",
+      "source_sha256": "e0162cb805f3dc96cc77bc3e1b246f9c98c6484fd8c16a216d0b60a1a96641db",
+      "bundled_sha256": "f27cf036fe171f1f74b2e93facbb2b4c1b8437737da0b6494ce243cd1f804126"
+    },
+    "usb_string_codec.py": {
+      "source": "research/firmware_identity_mvp/usb_string_codec.py",
+      "source_sha256": "284342b49204ece2c1f02d4aecd5f8780285cc610ac7a500f178412fdf8580bb",
+      "bundled_sha256": "6bf3e3de178e5f4fac993b41f2a609561f6ebded94358fce878c9e3e728177a7"
+    },
+    "identity_catalog.py": {
+      "source": "research/firmware_identity_mvp/identity_catalog.py",
+      "source_sha256": "a5c706419762075573eb97cd7da40ada492a44ef165ff18295f329a9d235a8db",
+      "bundled_sha256": "a7240f250460ea7ec30260aa5cb822c23de856e8ca461b4bcce51ae85470102c"
+    },
+    "windows_metadata_probe.py": {
+      "source": "research/firmware_identity_mvp/windows_metadata_probe.py",
+      "source_sha256": "7e23903b55232217f96760f7cbe101e3e2b9ce9307b0ff93e795e5c48dc901f8",
+      "bundled_sha256": "a894f07ca5543462aa5018ecb8bd64846c7848e45d74bdf3ab24ce3f9f3cf10c"
+    },
+    "windows_access.py": {
+      "source": "research/firmware_identity_mvp/windows_explicit_language_probe.py",
+      "source_sha256": "c6e90e65d29eb397c561134cd9d36e8c6c88f9a2b7b9b64c0056198a77f68e6b",
+      "bundled_sha256": "951970ff518f4de282652d1c0e39a11337f2cab46c2e46b620bd3c349a304f14",
+      "extracted_definitions": [
+        "AccessError",
+        "decode_product",
+        "WindowsApi.__init__"
+      ]
+    }
+  },
+  "catalog_file_sha256": "8966677ee6a2316b50b039f4a627e152f4cb88755efebebf33ad12ef105b86b2",
+  "catalog_entries": 12,
+  "changes": [
+    "package-local imports and isolated worker path",
+    "Windows access class constructor and strict decoder extracted; product query omitted"
+  ],
+  "firmware_binaries_included": false,
+  "catalog_baseline_sha256": "0cecc4afd89d363e6ea8f3ced4503949677e67e77319e9c2756bdb8435d0a34b",
+  "catalog_version": "development-20261017-3",
+  "catalog_additions": "Default Development GUI generation recipes; no new hardware claim."
+}

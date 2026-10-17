@@ -13,4 +13,13 @@ Stock restoration used the guarded RT engine through an instrumented local harne
 
 RT R60/P90 corresponds to estimated release 0.10 mm and re-press 0.15 mm. Legacy telemetry does not encode the exact installed TopreRT release; an unknown exact version remains expected.
 
-Unverified coverage: other HHKB models/units, other profiles, the revised HOLD writer, full GUI button flow, recovery after an interrupted write, and a clean-PC installation. Metadata firmware integration is not included. Firmware, private identity bindings, serials and USB paths are excluded from the public package.
+Unverified coverage: other HHKB models/units, other profiles, the revised HOLD writer, recovery after an interrupted write, and a clean-PC installation. Metadata firmware integration is not included. Firmware, private identity bindings, serials and USB paths are excluded from the public package.
+
+
+## Subsequent user-operated GUI trial — 2026-10-15 KST
+
+After publication of rc3, the user operated the Preview 2026.10.15 GUI buttons to restore stock and reinstall RT using the Stable 0.10/0.15 mm settings on the same PD-KB800W. The stock screenshot shows 4,960/4,960 packets, Reconnect PASS and the stock-restored completion status. A fresh firmware inspection shows Unknown with no recognized RT telemetry, consistent with stock restoration but not independently proving stock identity.
+
+The subsequent RT screenshot shows the RT-applied completion status, Reconnect PASS, Legacy TopreRT identification and RT telemetry evidence. The user reports normal operation. Observer recorded 17 transitions, with release 0/6 bracketed (all six COARSE) and mid-stroke re-press 1/5 bracketed (GOOD=1, FAIR=1, COARSE=3). These observations establish telemetry activity; they do not validate distance accuracy or prove either correct or incorrect thresholds. A controlled, slower measurement would be needed to assess that separately.
+
+The user-operated normal stock/RT GUI path is now covered for this device and settings, in addition to the earlier instrumented trial. No deliberately interrupted update or new HOLD writer test was performed. The screenshots do not establish clean-PC setup or broad device/profile coverage. This follow-up is a local documentation update; the published rc3 archive and tag remain unchanged.

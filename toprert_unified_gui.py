@@ -41,7 +41,11 @@ import toprert as R3P
 sys.path.insert(0, str(HHKB_DIR))
 import hhkb_toprert_engine_v0_6 as HHE
 import firmware_detection as FW_DETECT
+import firmware_inspection as FW_INSPECT
+import device_discovery as DEVICE_DISCOVERY
+from firmware_identity import generation as HH_ID, registry as BUILD_REGISTRY
 import device_diagnostics as DEVICE_DIAG
+import install_history as INSTALL_HISTORY
 
 # v0.13 generic-HOLD custom-slot builder.
 try:
@@ -50,7 +54,8 @@ except ImportError:
     sys.path.insert(0, str(APP_DIR))
     import hhkb_v013_generic_hold_builder_v0_2_rc2 as HHSLOT
 
-APP_TITLE = "TopreRT GUI — v0.3.0-rc4"
+APP_TITLE = "TopreRT GUI — Development (firmware identification)"
+APP_BUILD = "metadata-generation-development-1"
 PLAT_R3S = "REALFORCE R3S"
 PLAT_HHKB = "HHKB Professional Hybrid"
 
@@ -71,7 +76,57 @@ R3_KEYMAP = {k.upper(): v for k, v in R3C.observer_key_map().items()}
 HH_KEYMAP = dict(HHE.KEY_MAP)
 
 
+def flash_transfer_text(done, total, elapsed, rate):
+    """Shared RT/HOLD display. ETA covers packet transfer, not reconnect."""
+    def clock(seconds):
+        minutes, seconds = divmod(max(0, int(round(seconds))), 60)
+        hours, minutes = divmod(minutes, 60)
+        return f"{hours}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes:02d}:{seconds:02d}"
+    ready = elapsed >= 1 and done > 1 and rate is not None and rate > 0
+    eta = clock(max(0, total - done) / rate) if ready else "estimating..."
+    speed = f"{rate:.1f} pkt/s" if ready else "measuring..."
+    return (f"Writing {done * 100 / total:.1f}% · Packets {done:,} / {total:,}\n"
+            f"Elapsed {clock(elapsed)} · Transfer ETA {eta} · {speed}")
+
+
+def local_history_summary(records, platform, *, model=None):
+    """PC history is supplementary; never an installed-firmware conclusion."""
+    event = "generated" if platform == PLAT_R3S else "installed"
+    relevant = [r for r in records if r["event"] == event and
+                (r["model"].startswith("R3S") if platform == PLAT_R3S else r["model"].startswith("PD-KB8"))
+                and (not model or r["model"] == model)]
+    if not relevant:
+        return "No local record for this model / keyboard family. Current firmware is not inferred from history."
+    r = relevant[0]
+    mode = {"rt": "RT", "hold": "HOLD", "stock": "Stock"}[r["intended_mode"]]
+    action = "Last file generated" if event == "generated" else "Last completed installation"
+    stamp = r["timestamp_utc"].replace("T", " ").split(".", 1)[0] + " UTC"
+    note = ("File creation only; installation with official REALFORCE software is not recorded."
+            if event == "generated" else "PC record only; connected device not matched and firmware not read back.")
+    return (f"{action}: {mode} · {r['model']} · {stamp}\n"
+            f"App build: {r['application_build']} · File SHA-256: {r['firmware_sha256'][:12]}…\n{note}")
+
+
+def hold_history_settings(report):
+    """Retain intended public slot labels, never a path or raw response."""
+    try:
+        keys = ("source_name", "tap_name", "hold_name", "threshold_ms")
+        return {"slots": [{k: slot[k] for k in keys} for slot in report["slots"]]}
+    except (TypeError, KeyError):
+        return {}
+
+
 class UnifiedGUI(tk.Tk):
+    def destroy(self):
+        # Cancel this interpreter's queued callbacks before deleting their Tcl
+        # commands. This also keeps sequential Development GUI tests clean.
+        for token in self.tk.splitlist(self.tk.call('after', 'info')):
+            try:
+                self.after_cancel(token)
+            except tk.TclError:
+                pass
+        super().destroy()
+
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
@@ -110,6 +165,8 @@ class UnifiedGUI(tk.Tk):
         self.observer_state = tk.StringVar(value="Observer idle")
         self.installed_firmware = tk.StringVar(value="Not queried — USB only; manual read-only check")
         self.firmware_identification = None
+        self._inspection_epoch = 0
+        self.local_history = tk.StringVar(value="No local operation recorded.")
         self.detect_detail = tk.StringVar(value="Legacy detection is experimental; no flashing performed.")
         self.progress_text = tk.StringVar(value="")
 
@@ -169,7 +226,8 @@ class UnifiedGUI(tk.Tk):
             values=[PLAT_R3S, PLAT_HHKB], state="readonly", width=30
         )
         combo.pack(side="left")
-        ttk.Button(top, text="Detect", command=self._detect_platform).pack(side="left", padx=(8, 0))
+        self.detect_btn = ttk.Button(top, text="Detect", command=self._detect_platform)
+        self.detect_btn.pack(side="left", padx=(8, 0))
 
         self.platform_note = ttk.Label(main, text="")
         self.platform_note.pack(anchor="w", pady=(2, 10))
@@ -187,6 +245,11 @@ class UnifiedGUI(tk.Tk):
             command=self.save_firmware_identification, state="disabled")
         self.firmware_report_btn.pack(anchor="e", pady=(4, 0))
         ttk.Label(inspect_box, textvariable=self.detect_detail, foreground="#526171", wraplength=875).pack(anchor="w", pady=(5, 0))
+
+        history_box = ttk.LabelFrame(main, text="Local history on this PC · not device identification", padding=8)
+        history_box.pack(fill="x", pady=(0, 8))
+        ttk.Label(history_box, textvariable=self.local_history, wraplength=875,
+                  justify="left", foreground="#526171").pack(anchor="w")
 
         self.stock_firmware_frame = ttk.LabelFrame(main, text="Stock firmware", padding=9)
         f1 = self.stock_firmware_frame
@@ -358,11 +421,13 @@ class UnifiedGUI(tk.Tk):
         sb.pack(side="right", fill="y")
         self.log.configure(yscrollcommand=sb.set)
 
-        prow = ttk.Frame(self.footer)
+        prow = ttk.LabelFrame(self.footer, text="Firmware progress", padding=8)
         prow.pack(fill="x", pady=(8, 0))
         self.progress = ttk.Progressbar(prow, maximum=100)
-        self.progress.pack(side="left", fill="x", expand=True)
-        ttk.Label(prow, textvariable=self.progress_text, width=30).pack(side="left", padx=(10, 0))
+        self.progress.pack(fill="x")
+        progress_detail = ttk.Label(prow, textvariable=self.progress_text, justify="left", wraplength=850)
+        progress_detail.pack(anchor="w", fill="x", pady=(6, 0))
+        prow.bind("<Configure>", lambda event: progress_detail.configure(wraplength=max(200, event.width - 24)))
 
         actions = ttk.Frame(self.footer)
         actions.pack(fill="x", pady=(8, 0))
@@ -600,6 +665,7 @@ class UnifiedGUI(tk.Tk):
         if flash:
             # Invalidate before saving widget states so unlocking cannot restore
             # export of an identification captured before this update attempt.
+            self._inspection_epoch = getattr(self, "_inspection_epoch", 0) + 1
             self.firmware_identification = None
             self.firmware_report_btn.configure(state="disabled")
             self.installed_firmware.set("Not verified after update attempt")
@@ -652,6 +718,8 @@ class UnifiedGUI(tk.Tk):
                     self.progress_text.set(label)
                 elif kind == "status":
                     self.status_line.set(payload)
+                elif kind == "history_changed":
+                    self._refresh_local_history()
                 elif kind == "busy_off":
                     self._busy(False)
                 elif kind == "hh_flash_done":
@@ -660,13 +728,33 @@ class UnifiedGUI(tk.Tk):
                     self.hh_validated_build_report = None
                     self.hh_slots_flash_btn.configure(state="disabled")
                     self.hh_slots_build_btn.configure(state="normal")
-                elif kind == "fw_detect_result":
+                elif kind == "platform_detect_result":
+                    epoch, result = payload
+                    self.detect_btn.configure(state="normal")
+                    if self._closing or epoch != self._inspection_epoch:
+                        continue
+                    target = {"r3s": PLAT_R3S, "hhkb": PLAT_HHKB}.get(result.selected)
+                    if target is not None and target != self.platform.get():
+                        self.platform.set(target)
+                    self.status_line.set(result.message)
+                elif kind in ("fw_detect_result", "fw_inspection_result"):
+                    if kind == "fw_inspection_result":
+                        epoch, payload = payload
+                        self.inspect_btn.configure(state="normal")
+                        if self._closing or epoch != self._inspection_epoch or self.platform.get() != PLAT_HHKB:
+                            continue
                     self.firmware_identification = payload
-                    self.installed_firmware.set(payload.category + (f"  ·  {payload.device}" if payload.device else ""))
+                    self.installed_firmware.set(FW_DETECT.display_title(payload) + (f"  ·  {payload.device}" if payload.device else ""))
                     self.detect_detail.set(FW_DETECT.format_details(payload))
                     self.firmware_report_btn.configure(state="normal")
                     self.inspect_btn.configure(state="normal")
-                elif kind == "fw_detect_error":
+                    self._refresh_local_history()
+                elif kind in ("fw_detect_error", "fw_inspection_error"):
+                    if kind == "fw_inspection_error":
+                        epoch, payload = payload
+                        self.inspect_btn.configure(state="normal")
+                        if self._closing or epoch != self._inspection_epoch or self.platform.get() != PLAT_HHKB:
+                            continue
                     self.installed_firmware.set("Unknown")
                     self.detect_detail.set(str(payload))
                     self.inspect_btn.configure(state="normal")
@@ -686,6 +774,36 @@ class UnifiedGUI(tk.Tk):
         self.after(80, self._poll)
 
     # ---------------- Installed firmware, conservative probe ----------------
+    @property
+    def history_path(self):
+        # Reading an absent history must not create output directories.
+        return APP_DIR / "output" / "install_history.json"
+
+    def _refresh_local_history(self):
+        platform = self.platform.get()
+        model = None
+        if platform == PLAT_HHKB and self.firmware_identification is not None:
+            model = self.firmware_identification.device or None
+        elif platform == PLAT_R3S and self.source_meta:
+            model = self.source_meta.get("source_model") or self.source_meta.get("model")
+        self.local_history.set(local_history_summary(
+            INSTALL_HISTORY.load_history(self.history_path), platform, model=model))
+
+    def _record_operation_history(self, *, event, model, mode, sha, settings=None):
+        # History failure cannot turn a completed flash into an error/retry.
+        try:
+            saved = INSTALL_HISTORY.record_event(self.history_path, event=event, model=model,
+                firmware_sha256=sha, application_build=APP_BUILD, application_title=APP_TITLE,
+                application_channel="development", intended_mode=mode, settings=settings,
+                reconnect_status="verified" if event == "installed" else "not_applicable")
+        except Exception:
+            saved = False
+        if saved:
+            self.q.put(("history_changed", None))
+        else:
+            self.q.put(("log", "Operation completed; supplementary local history could not be saved."))
+        return saved
+
     def inspect_device_diagnostics(self):
         if not self._operation_available():
             return
@@ -758,14 +876,16 @@ class UnifiedGUI(tk.Tk):
         self.installed_firmware.set("Inspecting HHKB USB device...")
         self.firmware_identification = None
         self.firmware_report_btn.configure(state="disabled")
+        self._inspection_epoch = getattr(self, "_inspection_epoch", 0) + 1
+        epoch = self._inspection_epoch
         self.detect_detail.set("Read-only commands only; no updater or firmware write command.")
         self.inspect_btn.configure(state="disabled")
         def work():
             try:
-                result = FW_DETECT.inspect_hhkb(HHE)
-                self.q.put(("fw_detect_result", result))
-            except Exception as exc:
-                self.q.put(("fw_detect_error", "Firmware query failed. Check USB connection and close other keyboard tools; exact version remains unknown."))
+                result = FW_INSPECT.inspect_hhkb(HHE)
+                self.q.put(("fw_inspection_result", (epoch, result)))
+            except Exception:
+                self.q.put(("fw_inspection_error", (epoch, "Firmware query failed. Check USB connection and close other keyboard tools; exact version remains unknown.")))
         try:
             started = self._worker(work)
         except Exception:
@@ -790,38 +910,36 @@ class UnifiedGUI(tk.Tk):
 
     # ---------------- Platform ----------------
     def _detect_platform(self):
-        if self.flash_active or self._closing:
+        if not self._operation_available():
             return
-        try:
-            import hid
-            r3 = [d for d in hid.enumerate(0x0853, 0x0311) if d.get("interface_number") == 2]
-            hh = []
-            for d in hid.enumerate(0x04FE, 0):
-                p = d["path"]
-                ps = p.decode(errors="ignore") if isinstance(p, bytes) else str(p)
-                if d.get("product_id") in HHE.PIDS and (d.get("interface_number") == 2 or "mi_02" in ps.lower()):
-                    hh.append(d)
-            if len(r3) == 1 and not hh:
-                self.platform.set(PLAT_R3S)
-                self.status_line.set("Detected REALFORCE R3S")
-            elif len(hh) == 1 and not r3:
-                self.platform.set(PLAT_HHKB)
-                self.status_line.set("Detected HHKB Professional Hybrid")
-            elif r3 and hh:
-                self.status_line.set("Both supported keyboards detected — select one above")
-            else:
-                self.status_line.set("No supported keyboard auto-detected")
-        except Exception as e:
-            self.status_line.set("Detection unavailable: " + str(e))
-
-    def _platform_changed(self, *_):
+        self._inspection_epoch += 1
+        epoch = self._inspection_epoch
         self.firmware_identification = None
         self.firmware_report_btn.configure(state="disabled")
         self.installed_firmware.set("Not queried — select Inspect firmware")
-        self.detect_detail.set("Exact TopreRT version unknown. Metadata v1 integration remains under research.")
+        self.detect_detail.set("Detect finds USB keyboards. Inspect firmware reads the installed family and build information.")
+        self.status_line.set("Detecting USB keyboards...")
+        self.detect_btn.configure(state="disabled")
+        def work():
+            result = DEVICE_DISCOVERY.scan()
+            self.q.put(("platform_detect_result", (epoch, result)))
+        try:
+            started = self._worker(work)
+        except Exception:
+            self.detect_btn.configure(state="normal")
+            self.status_line.set("USB detection did not start.")
+            raise
+        if not started:
+            self.detect_btn.configure(state="normal")
+            self.status_line.set("USB detection did not start.")
+
+    def _platform_changed(self, *_):
+        self._inspection_epoch += 1
+        self.firmware_identification = None
+        self.firmware_report_btn.configure(state="disabled")
+        self.installed_firmware.set("Not queried — select Inspect firmware")
         plat = self.platform.get()
-        self.installed_firmware.set("Not queried — USB only; manual read-only check")
-        self.detect_detail.set("Legacy detection is experimental; no flashing performed.")
+        self.detect_detail.set("Inspect firmware reads available build information. Older firmware may provide only legacy identification.")
         self.source_path = None
         self.source_valid = False
         self._set_source_entry("")
@@ -860,6 +978,7 @@ class UnifiedGUI(tk.Tk):
         self._mode_changed()
         self.preview()
         self._live_validate()
+        self._refresh_local_history()
 
     def _auto_find_hhkb_stock(self):
         candidates = [
@@ -1027,6 +1146,9 @@ class UnifiedGUI(tk.Tk):
             messagebox.showerror(APP_TITLE, str(e))
 
     def _hh_slots_build(self):
+        if not self._operation_available():
+            return
+        self._hh_slots_changed()
         if not self.hh_slot_baseline_path:
             messagebox.showerror(APP_TITLE, "Select exact stock A0.48 first.")
             return
@@ -1034,20 +1156,25 @@ class UnifiedGUI(tk.Tk):
             baseline = self.hh_slot_baseline_path.read_bytes()
             HHSLOT.validate_stock(baseline)
             slots = self._hh_slots_collect()
-            out, report = HHSLOT.build(baseline, slots)
+            out, report = HH_ID.build_hold(baseline, slots)
         except Exception as e:
             messagebox.showerror(APP_TITLE, str(e))
             return
 
         names = "-".join(s["source_name"] for s in slots) if slots else "NONE"
-        target = self.output_dir / f"HHKB_A048_TOPRERT_V013_GENERIC_HOLD_{names}.hfb"
+        build_id = report['identity']['build_id']
+        target = self.output_dir / f"TopreRT_Development_HOLD_{build_id:08X}_{names}.hfb"
         n = 2
         while target.exists():
-            target = self.output_dir / f"HHKB_A048_TOPRERT_V013_GENERIC_HOLD_{names}_{n}.hfb"
+            target = self.output_dir / f"TopreRT_Development_HOLD_{build_id:08X}_{names}_{n}.hfb"
             n += 1
-        target.write_bytes(out)
         manifest = Path(str(target) + ".manifest.json")
-        manifest.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        try:
+            BUILD_REGISTRY.write_build(target, out, report, baseline, self.output_dir/'identity')
+        except Exception:
+            self._hh_slots_changed()
+            messagebox.showerror(APP_TITLE, "Could not save and validate the Development build/catalog. Installation remains disabled.")
+            return
 
         self.progress["value"] = 100
         self.progress_text.set("Build ready")
@@ -1056,6 +1183,7 @@ class UnifiedGUI(tk.Tk):
             f"Firmware  {target}\n"
             f"Manifest  {manifest}\n"
             f"SHA-256   {report['output_sha256']}\n"
+            f"Build ID  {build_id:08X} · Development\n"
             f"Main CRC  {report['main_crc']}\n"
             f"Global CRC {report['global_crc']}\n\n"
             + "\n".join(
@@ -1069,7 +1197,7 @@ class UnifiedGUI(tk.Tk):
               "  HW VALIDATED SPECIAL CASE: SPACE -> tap SPACE / hold FN\n"
               "  GENERIC / LIMITED TESTING: other selectable HOLD targets\n"
               "  BLOCKED: LSHIFT, RSHIFT\n"
-              "\nBuild policy: exact stock A0.48 → audited rev2.2 core patch; custom delta is CRC header + descriptor table.\n"
+              "\nBuild policy: audited HOLD core/table plus exact metadata sections and refreshed CRC.\n"
               "Build is SHA-locked before Flash is enabled."
         )
         # Lock the exact bytes that passed the builder audit. Any later slot edit
@@ -1079,11 +1207,14 @@ class UnifiedGUI(tk.Tk):
         if built_sha != report["output_sha256"]:
             raise HHSLOT.Reject("Post-write SHA mismatch; refusing to enable Flash.")
         # Re-run baseline + candidate audit from disk, not from the in-memory image.
-        baseline_disk = self.hh_slot_baseline_path.read_bytes()
-        HHSLOT.validate_stock(baseline_disk)
-        rebuilt, re_report = HHSLOT.build(baseline_disk, slots)
-        if rebuilt != built_bytes or re_report["output_sha256"] != built_sha:
-            raise HHSLOT.Reject("Post-write regression audit mismatch.")
+        try:
+            baseline_disk = self.hh_slot_baseline_path.read_bytes()
+            HHSLOT.validate_stock(baseline_disk)
+            HH_ID.validate(baseline_disk, built_bytes, report, family='hold')
+        except Exception:
+            self._hh_slots_changed()
+            messagebox.showerror(APP_TITLE, "Fresh file validation failed. HOLD installation remains disabled.")
+            return
 
         self.hh_validated_build_path = target
         self.hh_validated_build_sha = built_sha
@@ -1138,10 +1269,11 @@ class UnifiedGUI(tk.Tk):
         self.hh_slots_build_btn.configure(state="disabled")
         self.status_line.set("HHKB flash armed — preflight starting")
         baseline = self.hh_slot_baseline_path
-        self._worker(lambda: self._hh_slots_flash_worker(path, sha, token, baseline), flash=True)
+        history_settings = hold_history_settings(self.hh_validated_build_report)
+        self._worker(lambda: self._hh_slots_flash_worker(path, sha, token, baseline, history_settings), flash=True)
 
-    def _hh_slots_flash_worker(self, path, sha, token, baseline):
-        helper = HHKB_DIR / "hhkb_v013_validated_flasher_v0_1.py"
+    def _hh_slots_flash_worker(self, path, sha, token, baseline, history_settings=None):
+        helper = APP_DIR / "hhkb_metadata_flasher.py"
         if not helper.exists():
             raise RuntimeError(f"Validated flasher helper missing: {helper}")
         if baseline is None or not baseline.exists():
@@ -1150,6 +1282,7 @@ class UnifiedGUI(tk.Tk):
         cmd = [
             sys.executable, "-u", str(helper), str(path),
             "--baseline", str(baseline),
+            "--manifest", str(path) + ".manifest.json",
             "--expected-sha", sha,
             "--confirm-token", token,
             "--flash",
@@ -1179,24 +1312,8 @@ class UnifiedGUI(tk.Tk):
                         flash_t0 = now
                     elapsed = max(0.0, now - flash_t0)
                     rate = (done - 1) / elapsed if elapsed > 0 and done > 1 else 0.0
-                    remain = max(0, total - done)
-                    eta = remain / rate if rate > 0 else None
-
-                    def _fmt_clock(seconds):
-                        seconds = max(0, int(round(seconds)))
-                        mm, ss = divmod(seconds, 60)
-                        hh, mm = divmod(mm, 60)
-                        return f"{hh:d}:{mm:02d}:{ss:02d}" if hh else f"{mm:02d}:{ss:02d}"
-
-                    elapsed_s = _fmt_clock(elapsed)
-                    eta_s = _fmt_clock(eta) if eta is not None else "--:--"
-                    rate_s = f"{rate:.1f} pkt/s" if rate > 0 else "measuring…"
-                    detail = (
-                        f"HHKB flashing · {pct:.1f}% · "
-                        f"elapsed {elapsed_s} · ETA {eta_s} · {rate_s}"
-                    )
-                    self.q.put(("progress", (pct, detail)))
-                    self.q.put(("status", detail))
+                    detail = flash_transfer_text(done, total, elapsed, rate)
+                    self.q.put(("progress", (15 + 70 * done / total, detail)))
             rc = proc.wait()
         finally:
             # Keep the protection until the child exits, including output-read failures.
@@ -1212,6 +1329,8 @@ class UnifiedGUI(tk.Tk):
         if rc != 0:
             raise RuntimeError(f"HHKB validated flasher exited with code {rc}")
 
+        self._record_operation_history(event="installed", model="PD-KB800W", mode="hold",
+                                       sha=sha, settings=history_settings)
         self.q.put(("progress", (100, "HHKB flash complete")))
         self.q.put(("status", "HHKB custom v0.13 flash completed — reconnect verified"))
         self.q.put(("log", "FLASH PASS — E3 completed and normal firmware reconnect was verified."))
@@ -1244,6 +1363,7 @@ class UnifiedGUI(tk.Tk):
             messagebox.showerror(APP_TITLE, str(e))
         self._sync_hhkb_stock_for_hold()
         self._live_validate()
+        self._refresh_local_history()
 
     def _validate_source_bytes(self, data):
         if self.platform.get() == PLAT_R3S:
@@ -1292,6 +1412,7 @@ class UnifiedGUI(tk.Tk):
             self.source_valid = False
             self.source_status.set("REJECTED")
             messagebox.showerror(APP_TITLE, str(e))
+        self._refresh_local_history()
 
     # ---------------- Profile ----------------
     def _profile_text_changed(self, *_args):
@@ -1471,6 +1592,9 @@ class UnifiedGUI(tk.Tk):
         self._append("Whitelist / CRC / trailer: PASS")
         self._append("No firmware was flashed by TopreRT.")
         self.status_line.set("R3S firmware ready — install it with official REALFORCE software")
+        self._record_operation_history(event="generated", model=meta["source_model"], mode="rt",
+            sha=HHE.sha256(out), settings={"release_raw": rr, "repress_raw": pr,
+                                         "release_mm": rmm, "repress_mm": pmm})
 
         messagebox.showinfo(
             APP_TITLE,
@@ -1484,8 +1608,14 @@ class UnifiedGUI(tk.Tk):
             stock = self.source_path.read_bytes()
             HHE.validate_stock(stock)
             rmm, pmm, rr, pr = self._profile_values()
-            image = HHE.build(stock, rr, pr)
-            HHE.validate_candidate(stock, image)
+            image, metadata_report = HH_ID.build_rt(stock, rr, pr)
+            build_id = metadata_report['identity']['build_id']
+            target = self.output_dir / f"TopreRT_Development_RT_{build_id:08X}_R{rr}_P{pr}.hfb"
+            n = 2
+            while target.exists():
+                target = self.output_dir / f"TopreRT_Development_RT_{build_id:08X}_R{rr}_P{pr}_{n}.hfb"
+                n += 1
+            BUILD_REGISTRY.write_build(target, image, metadata_report, stock, self.output_dir/'identity')
         except Exception as e:
             messagebox.showerror(APP_TITLE, str(e))
             return
@@ -1493,19 +1623,12 @@ class UnifiedGUI(tk.Tk):
         if not messagebox.askyesno(
             APP_TITLE,
             "Create and install RT firmware on the connected HHKB?\n\n"
+            f"Development build: {build_id:08X}\n"
             f"Release: {rr} raw (~{HHE.raw_to_mm(rr):.3f} mm estimated)\n"
             f"Re-press: {pr} raw (~{HHE.raw_to_mm(pr):.3f} mm estimated)\n\n"
             "Do not disconnect USB or let the PC sleep during the update."
         ):
             return
-
-        target = self.output_dir / f"HHKB800_FW_A048_TopreRT_R{rr}_P{pr}.hfb"
-        n = 2
-        while target.exists():
-            target = self.output_dir / f"HHKB800_FW_A048_TopreRT_R{rr}_P{pr}_{n}.hfb"
-            n += 1
-        target.write_bytes(image)
-        HHE.write_manifest(target, image, rr, pr, rmm, pmm)
 
         self._busy(True)
         self.progress["value"] = 0
@@ -1517,7 +1640,10 @@ class UnifiedGUI(tk.Tk):
             self.q.put(("log", f"Firmware: {target}"))
             self.q.put(("log", f"SHA-256: {HHE.sha256(image)}"))
             self.q.put(("log", "Whitelist / helper / CRC: PASS"))
-            self._hhkb_flash(image)
+            HH_ID.validate(stock, image, metadata_report, family='rt_only')
+            model = self._hhkb_flash(image)
+            self._record_operation_history(event="installed", model=model, mode="rt", sha=HHE.sha256(image),
+                settings={"release_raw": rr, "repress_raw": pr, "release_mm": rmm, "repress_mm": pmm})
             self.q.put(("status", "HHKB TopreRT applied — reconnect verified"))
             self.q.put(("busy_off", None))
         self._worker(work, flash=True)
@@ -1565,15 +1691,11 @@ class UnifiedGUI(tk.Tk):
                     if self.flash_t0 is None:
                         self.flash_t0 = now
                     elapsed = max(now - self.flash_t0, 1e-6)
-                    avg = completed / elapsed
-                    if completed >= 250:
+                    avg = (completed - 1) / elapsed
+                    if elapsed >= 1 and completed > 1:
                         self.flash_rate = avg if self.flash_rate is None else 0.25*avg + 0.75*self.flash_rate
-                        eta = (total-completed) / max(self.flash_rate, 1e-6)
-                        eta_text = f"ETA {eta:.0f}s" if eta < 60 else f"ETA {int(eta//60)}m {int(eta%60):02d}s"
-                    else:
-                        eta_text = "ETA estimating..."
                     pct = 15 + (completed/total)*70
-                    self.q.put(("progress", (pct, f"Writing {completed*100/total:.0f}% · {eta_text}")))
+                    self.q.put(("progress", (pct, flash_transfer_text(completed, total, elapsed, self.flash_rate))))
                 if n % 500 == 0 or n == total-1:
                     self.q.put(("log", f"  {completed}/{total}  {completed*100/total:5.1f}%"))
             self.q.put(("progress", (88, "Finalizing")))
@@ -1593,6 +1715,7 @@ class UnifiedGUI(tk.Tk):
             dev.close()
         self.q.put(("progress", (100, "Reconnect PASS")))
         self.q.put(("log", "Reconnect: PASS"))
+        return HHE.decode_identity(final_info)
 
     # ---------------- Observer ----------------
     def start_observer(self):
@@ -1881,7 +2004,8 @@ class UnifiedGUI(tk.Tk):
         self.progress_text.set("Restore preparing...")
         def work():
             self.q.put(("log", "RESTORE PREFLIGHT: PASS"))
-            self._hhkb_flash(stock)
+            model = self._hhkb_flash(stock)
+            self._record_operation_history(event="installed", model=model, mode="stock", sha=HHE.sha256(stock))
             self.q.put(("status", "HHKB stock A0.48 restored — reconnect verified"))
             self.q.put(("busy_off", None))
         self._worker(work, flash=True)

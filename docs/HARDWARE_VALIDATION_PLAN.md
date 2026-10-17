@@ -1,5 +1,7 @@
 # HHKB revised-writer validation plan
 
+Latest evidence: the subsequent user-operated stock/RT GUI cycle passed on the same PD-KB800W; see HARDWARE_RESULT_20261015.md. The older entries below preserve the sequence of evidence. Distance precision remains unverified by the coarse Observer samples.
+
 Status (2026-10-15 KST): one PD-KB800W passed a complete exact-stock A0.48 restore using the guarded RT engine through a local instrumented harness. E0, updater identity, E1, all 4,960 E2 acknowledgements, E3 and same-device normal reconnect passed. The user confirmed HHKB typing and official Keymap Tool recognition. HOLD writer, interrupted-update recovery and the complete GUI button flow remain separate validation items. The earlier observations below describe evidence available before this trial. Keep raw serials and USB paths out of public logs.
 
 Subsequent RT trial (2026-10-15 KST): the previously validated R60/P90 image, SHA-256 `e67d7a75583f86f0d6185087cdaf323daba62748fc6c6d7eb189cb66301661d5`, was transferred using the actual GUI update worker invoked by a local harness. E0, matched updater identity, E1, all 4,960 E2 acknowledgements, E3 and matched normal-mode identity passed. This exercises the GUI worker, not the full window/button flow. The user confirmed post-RT typing, Observer and RT identification all work. This stock-to-RT trial passed on the tested device.

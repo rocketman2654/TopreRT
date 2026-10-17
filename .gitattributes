@@ -1,0 +1,8 @@
+# These files bind raw bytes into catalog checksums and deterministic build IDs.
+# Preserve the reviewed package bytes, including the fixed patch template.
+/firmware_identity/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+/.gitattributes text eol=lf
+# The reviewed legacy generator sources use CRLF on disk on every platform.
+/backends/hhkb/hhkb_toprert_engine_v0_6.py text eol=crlf
+/backends/hhkb/hhkb_v013_generic_hold_core_patch_v0_1.py text eol=crlf
+/hhkb_v013_generic_hold_builder_v0_2_rc2.py text eol=crlf

@@ -1,4 +1,6 @@
-# Metadata Protocol v1 — design draft only
+# Metadata Protocol v1 — historical expanded draft
+
+Current development starts with the smaller [minimal identification proposal](IDENTIFICATION_MVP_DESIGN.md). The fields below remain a historical broader design, not requirements implemented in the app. Neither layout has an approved firmware transport.
 
 Do **not** deploy this draft to keyboards; implementation, CRC discipline,
 command collision checks, and real-hardware tests are still required.
@@ -20,6 +22,9 @@ A firmware may support RT, Dual-Role, or both. Feature flags describe
 response is a historical implementation identifier, **not** v1 metadata.
 Never claim that a missing firmware response establishes a stock firmware.
 
-Existing `0x99` telemetry and `0x99 / C1 A1` legacy query must remain
-backwards compatible. No new command ID or packet definition is frozen until
+Existing `0x99` telemetry must remain backwards compatible. The historical
+`0x99 / C1 A1` handler initializes live HOLD RAM; development identification
+uses `0x99 / C1 52` snapshots instead, without an A1 fallback. Preserving a
+historical firmware handler is not a recommendation to send its request.
+No new command ID or packet definition is frozen until
 we can validate it on real HHKB/R3S hardware.

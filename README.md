@@ -1,6 +1,6 @@
-> **v0.3.0-rc4 — HOLD inspection correction:** use a snapshot instead of initializing live HOLD RAM. Updating this PC app does not require reflashing the keyboard. One PD-KB800W passed user-reported RT and SpaceFn inspection checks; other configurations remain unverified. [Release notes / 한국어](docs/RELEASE_NOTES_v0.3.0-rc4.md).
-
 # TopreRT
+
+**Development channel — unreleased work after v0.3.0-rc3.** Published rc3 remains available from its fixed GitHub release/tag.
 **Rapid Trigger toolkit for REALFORCE R3S and HHKB Professional Hybrid / Hybrid Type-S**
 
 TopreRT is an unofficial Windows toolkit for creating Rapid Trigger firmware for supported REALFORCE R3S and HHKB keyboards. It validates user-supplied stock firmware, provides an interface for configuring RT or HHKB HOLD/SpaceFn, and includes a live sensor Observer. **R3S files are installed through official REALFORCE software; HHKB firmware is installed by the updater inside TopreRT.**
@@ -15,7 +15,11 @@ TopreRT is an unofficial Windows toolkit for creating Rapid Trigger firmware for
 
 ## Project Status
 
-**Current branch: diagnostics and update-safety preview.** This is a source distribution for Windows. On 2026-10-15, one PD-KB800W passed a complete stock A0.48 restore and RT R60/P90 reinstallation, including updater/normal identity checks and user-confirmed typing, official-tool recognition after stock restore, and Observer/RT identification after RT restore. RT installation exercised the actual GUI writer worker through a local harness. Other models, the HOLD writer, interrupted-update recovery and the full GUI button flow remain unverified. See [preview release notes](docs/RELEASE_NOTES_DIAGNOSTICS_PREVIEW.md) and the [hardware validation plan](docs/HARDWARE_VALIDATION_PLAN.md).
+Local development after rc3: [identification work and limits](docs/FIRMWARE_IDENTIFICATION_DEVELOPMENT.md). This work is not part of the published rc3 ZIP.
+
+Development displays [local operation history](docs/LOCAL_INSTALL_HISTORY_DEVELOPMENT.md) separately from device inspection. History never establishes the connected device's current firmware or exact version. Inspect firmware reads HHKB metadata when present, displaying family, build ID, channel and catalog version. [Development generation](docs/METADATA_GENERATION_DEVELOPMENT.md) embeds deterministic metadata in RT/HOLD output and stores portable recipes; matching RT recipes show release/re-press settings explicitly as recipe information, not settings readback. Versioned catalogs are bundled separately from custom local records. GUI-generated Golden RT B33E6ADF (R32/P32) and SpaceFn HOLD A96B4BA0 (250 ms, one slot) passed user-confirmed installation, reconnect, identification and functional checks on one PD-KB800W. See [hardware coverage and limits](docs/HARDWARE_IDENTIFICATION_20261018.md). Default RT 81B8EDEB has not been hardware-tested. Detect searches USB devices and preserves the manual selection when both families are connected.
+
+**Current work: Development firmware identification.** This is an unreleased source distribution for Windows. The earlier stock A0.48 restore/RT R60/P90 cycle and the latest GUI-generated RT/SpaceFn checks cover one PD-KB800W. Other models, other HOLD configurations, interrupted-update recovery and clean-PC setup need separate validation. Published rc3/rc4 assets are preserved.
 
 | Device | Firmware | RT Core | Observer / Writer |
 |---|---|---|---|
@@ -68,7 +72,7 @@ Install dependencies using:
 
 For R3S, file creation is not installation. Choose the newly generated `.rfb`, not the original stock image or `.manifest.json`. Do not assume the official updater accepts every version combination; if it rejects the file, record the message and app/model version before proceeding.
 
-For HHKB, close Observer and other keyboard tools before installing. Keep USB connected and the PC awake until completion. No separate updater launch or second installation in the official HHKB app is required. The tested stock/RT cycle covers one PD-KB800W; see [hardware coverage](docs/HARDWARE_RESULT_20261015.md). HOLD installation and interrupted-update recovery have separate, unverified coverage in this preview.
+For HHKB, close Observer and other keyboard tools before installing. Keep USB connected and the PC awake until completion. No separate updater launch or second installation in the official HHKB app is required. The stock/RT cycle and GUI-generated Golden RT/SpaceFn checks cover one PD-KB800W; see [current hardware coverage](docs/HARDWARE_IDENTIFICATION_20261018.md). Interrupted-update recovery remains unverified.
 
 `output` is inside the folder of the app you are running. Use **Open Output Folder** to avoid picking files from an older copy. HHKB output files are retained as artifacts; RT installation already happens in the same operation.
 
@@ -82,7 +86,13 @@ For HHKB, close Observer and other keyboard tools before installing. Keep USB co
 - **Restore Stock (HHKB):** writes original firmware and removes RT/HOLD. It is not a settings reset or a universal repair for an unresponsive keyboard. **Recovery Instructions (R3S)** opens guidance only.
 - **After installation:** confirm normal typing. For RT, check Observer responses; for HOLD, check the configured short-press/long-press behavior. A reconnect message alone is not a complete functional test.
 
-RT-only and HOLD/SpaceFn are alternative builds. Selecting a mode chooses what to install next; it does not report or switch the currently installed firmware. Metadata version queries and independent initial-press adjustment remain research features, not this preview's installation workflow.
+RT-only and HOLD/SpaceFn are alternative builds. Selecting a mode chooses what to install next; it does not report or switch the currently installed firmware. Metadata identification is integrated in this Development build; independent initial-press adjustment remains a research feature.
+
+SpaceFn currently defers the Space tap decision. Fast overlapping typing can put the space after the following character. This is a documented behavior limitation and is not changed by the identification work.
+
+### Developer tests
+
+Run `python -B -m unittest discover -s tests -v` for offline checks. The real-stock generation test class requires the exact supported A0.48 file via `TOPRERT_TEST_STOCK`; without it that class is explicitly skipped. A configured missing or invalid file fails validation. Firmware is never bundled for CI. Tests use mocked transport and do not flash devices.
 
 ## Stable Profiles
 

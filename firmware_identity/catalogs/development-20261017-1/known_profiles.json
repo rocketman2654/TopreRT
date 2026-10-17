@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "entries": [
+    {
+      "build_id": 3130021499,
+      "family": "rt_only",
+      "recipe_sha256": "7b5690ba49d24a50bd8bf829f8003e59e161a6095c7bb726c111e853ed53433f",
+      "settings": {
+        "release_raw": 60,
+        "repress_raw": 90
+      },
+      "image_sha256": "4c7dd681b45326605f00ebb833b4bef2c0f0417c819afb89d7809b0146f1f7bc"
+    },
+    {
+      "build_id": 3972642978,
+      "family": "hold",
+      "recipe_sha256": "a2b8c9ecedb232ccb82e2d7bf640dd72d7a4d851f77ccd7d5abb43d6307fbdf2",
+      "settings": {
+        "descriptor_table_hex": "0130306bfa0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "enabled_slots": 1,
+        "hold": "FN",
+        "source": "SPACE",
+        "tap": "SPACE",
+        "threshold_ms": 250
+      },
+      "image_sha256": "8e3459dd04272ba8197ee85b5b6996728123f360c70c72be5fbcf8da4bce6950"
+    }
+  ]
+}

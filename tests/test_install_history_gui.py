@@ -54,6 +54,7 @@ class HistoryIntegrationTests(unittest.TestCase):
         self.assertEqual(row['firmware_sha256'],hashlib.sha256(b'exact-RT-bytes').hexdigest())
         self.assertEqual(row['settings']['release_raw'],60)
         self.assertEqual(row['application_build'],gui.APP_BUILD)
+        self.assertEqual(row['application_channel'],'release')
         self.assertFalse(row['device_firmware_verified'])
 
     def test_failed_or_cancelled_rt_install_does_not_claim_success_in_history(self):
@@ -126,7 +127,7 @@ class HistoryIntegrationTests(unittest.TestCase):
         self.assertIn('No local record',gui.local_history_summary(rows,gui.PLAT_HHKB,model='PD-KB800B'))
         self.assertIn('No local record',gui.local_history_summary(rows,gui.PLAT_R3S))
 
-    def test_real_development_widgets_keep_history_separate_from_inspection(self):
+    def test_real_release_widgets_keep_history_separate_from_inspection(self):
         app=self.fake(); app._record_operation_history(event='installed',model='PD-KB800W',mode='rt',sha='a'*64)
         original_init=gui.tk.Tk.__init__
         def hidden(root,*a,**kw):
@@ -150,7 +151,7 @@ class HistoryIntegrationTests(unittest.TestCase):
                 self.assertEqual(root.firmware_identification.exact_version_available,False)
                 root.platform.set(gui.PLAT_R3S)
                 self.assertIn('No local record',root.local_history.get())
-                self.assertIn('Development',root.title())
+                self.assertIn('v0.3.0-rc5',root.title())
             finally: root.destroy()
 
 

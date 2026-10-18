@@ -1,6 +1,6 @@
 # TopreRT
 
-**Development channel — unreleased work after v0.3.0-rc3.** Published rc3 remains available from its fixed GitHub release/tag.
+**TopreRT v0.3.0-rc5 — prerelease.** Previous rc3/rc4 tags and assets remain unchanged.
 **Rapid Trigger toolkit for REALFORCE R3S and HHKB Professional Hybrid / Hybrid Type-S**
 
 TopreRT is an unofficial Windows toolkit for creating Rapid Trigger firmware for supported REALFORCE R3S and HHKB keyboards. It validates user-supplied stock firmware, provides an interface for configuring RT or HHKB HOLD/SpaceFn, and includes a live sensor Observer. **R3S files are installed through official REALFORCE software; HHKB firmware is installed by the updater inside TopreRT.**
@@ -15,11 +15,11 @@ TopreRT is an unofficial Windows toolkit for creating Rapid Trigger firmware for
 
 ## Project Status
 
-Local development after rc3: [identification work and limits](docs/FIRMWARE_IDENTIFICATION_DEVELOPMENT.md). This work is not part of the published rc3 ZIP.
+Release notes: [v0.3.0-rc5](docs/RELEASE_NOTES_v0.3.0-rc5.md). Identification investigation notes retain their Development history.
 
 Development displays [local operation history](docs/LOCAL_INSTALL_HISTORY_DEVELOPMENT.md) separately from device inspection. History never establishes the connected device's current firmware or exact version. Inspect firmware reads HHKB metadata when present, displaying family, build ID, channel and catalog version. [Development generation](docs/METADATA_GENERATION_DEVELOPMENT.md) embeds deterministic metadata in RT/HOLD output and stores portable recipes; matching RT recipes show release/re-press settings explicitly as recipe information, not settings readback. Versioned catalogs are bundled separately from custom local records. GUI-generated Golden RT B33E6ADF (R32/P32) and SpaceFn HOLD A96B4BA0 (250 ms, one slot) passed user-confirmed installation, reconnect, identification and functional checks on one PD-KB800W. See [hardware coverage and limits](docs/HARDWARE_IDENTIFICATION_20261018.md). Default RT 81B8EDEB has not been hardware-tested. Detect searches USB devices and preserves the manual selection when both families are connected.
 
-**Current work: Development firmware identification.** This is an unreleased source distribution for Windows. The earlier stock A0.48 restore/RT R60/P90 cycle and the latest GUI-generated RT/SpaceFn checks cover one PD-KB800W. Other models, other HOLD configurations, interrupted-update recovery and clean-PC setup need separate validation. Published rc3/rc4 assets are preserved.
+**Current app version: v0.3.0-rc5.** This is a prerelease source distribution for Windows. The earlier stock A0.48 restore/RT R60/P90 cycle and the latest GUI-generated RT/SpaceFn checks cover one PD-KB800W. Other models, other HOLD configurations, interrupted-update recovery and clean-PC setup need separate validation. Published rc3/rc4 assets are preserved.
 
 | Device | Firmware | RT Core | Observer / Writer |
 |---|---|---|---|
@@ -86,7 +86,7 @@ For HHKB, close Observer and other keyboard tools before installing. Keep USB co
 - **Restore Stock (HHKB):** writes original firmware and removes RT/HOLD. It is not a settings reset or a universal repair for an unresponsive keyboard. **Recovery Instructions (R3S)** opens guidance only.
 - **After installation:** confirm normal typing. For RT, check Observer responses; for HOLD, check the configured short-press/long-press behavior. A reconnect message alone is not a complete functional test.
 
-RT-only and HOLD/SpaceFn are alternative builds. Selecting a mode chooses what to install next; it does not report or switch the currently installed firmware. Metadata identification is integrated in this Development build; independent initial-press adjustment remains a research feature.
+RT-only and HOLD/SpaceFn are alternative builds. Selecting a mode chooses what to install next; it does not report or switch the currently installed firmware. Metadata identification is integrated in rc5; independent initial-press adjustment remains a research feature.
 
 SpaceFn currently defers the Space tap decision. Fast overlapping typing can put the space after the following character. This is a documented behavior limitation and is not changed by the identification work.
 
@@ -251,3 +251,7 @@ This project is licensed under the GNU Affero General Public License v3.0 - see 
 TopreRT is an open-source, unofficial firmware modification tool. Modifying keyboard firmware involves inherent risks, including boot loops, endless USB re-enumeration, loss of software detection, or bricking requiring hardware recovery. While SHA/CRC whitelisting and safety checks minimize these risks, they cannot guarantee immunity from failures.
 
 **If you are uncertain about a step, do not erase your device and make a full backup first.**
+
+## App version versus firmware build
+
+The app is v0.3.0-rc5. Generated firmware still carries the reviewed Development family/build IDs; the existing generator, template and catalogs are unchanged. Development output filenames/inspection labels are intentional, not a failed app update. The app release number is not assigned retrospectively to earlier firmware. Inspect firmware reads metadata only when that firmware includes it. Existing firmware does not need reinstalling just to update the PC app.

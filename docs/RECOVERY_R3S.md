@@ -49,7 +49,7 @@ The descriptor observed on an `R3SB31` running the normal application was:
 
 
 > IMPORTANT: `0853:0311` and interface `2` re provided directly by the device firmware/USB descriptor. They generally remain identical across the same device family running the same firmware configuration.
-> 
+>
 > Conversely, the HID `path` string, device instance path, and physical port location depend on the host PC and must not be hard-coded.
 >
 > Do not assume that other R3S models, different firmware modes, or `B0.01` updater mode use the same PID/interface. Following a fail-closed design, the recovery helper displays the actual enumeration results and only permits `E0` transmission when exactly one matching interface is found.

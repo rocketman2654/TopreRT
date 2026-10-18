@@ -1,0 +1,12 @@
+{
+  "catalog_version": "development-20261017-1",
+  "channel": "Development",
+  "files_sha256": {
+    "build_catalog.json": "0cecc4afd89d363e6ea8f3ced4503949677e67e77319e9c2756bdb8435d0a34b",
+    "known_profiles.json": "553094f123647bfc9d9668e52c360d3353613e4bfb91091ede7470a2dbeb4cec"
+  },
+  "policy": "Immutable per-version catalog; custom GUI builds use separate portable records. No exact rc3/rc4 version inference.",
+  "recorded_at_utc": "2026-10-17T12:21:54.434255+00:00",
+  "release_version": null,
+  "schema": 1
+}

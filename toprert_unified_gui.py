@@ -54,8 +54,8 @@ except ImportError:
     sys.path.insert(0, str(APP_DIR))
     import hhkb_v013_generic_hold_builder_v0_2_rc2 as HHSLOT
 
-APP_TITLE = "TopreRT GUI — Development (firmware identification)"
-APP_BUILD = "metadata-generation-development-1"
+APP_TITLE = "TopreRT GUI — v0.3.0-rc5"
+APP_BUILD = "v0.3.0-rc5"
 PLAT_R3S = "REALFORCE R3S"
 PLAT_HHKB = "HHKB Professional Hybrid"
 
@@ -794,7 +794,7 @@ class UnifiedGUI(tk.Tk):
         try:
             saved = INSTALL_HISTORY.record_event(self.history_path, event=event, model=model,
                 firmware_sha256=sha, application_build=APP_BUILD, application_title=APP_TITLE,
-                application_channel="development", intended_mode=mode, settings=settings,
+                application_channel="release", intended_mode=mode, settings=settings,
                 reconnect_status="verified" if event == "installed" else "not_applicable")
         except Exception:
             saved = False

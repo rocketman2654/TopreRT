@@ -31,6 +31,15 @@ def bundled():
     return catalog.load_catalog(HERE/'build_catalog.json')
 
 
+def _publish_once(temporary, target):
+    # Windows rename fails if the target exists; POSIX rename would replace it.
+    # Hard-link publication has exclusive-create semantics on POSIX instead.
+    if os.name == 'nt':
+        os.rename(temporary, target)
+    else:
+        os.link(temporary, target)
+
+
 def save_once(path, data):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -42,11 +51,11 @@ def save_once(path, data):
     try:
         with os.fdopen(fd, 'wb') as out:
             out.write(data); out.flush(); os.fsync(out.fileno())
-        if path.exists():
+        try:
+            _publish_once(name, path)
+        except FileExistsError:
             if path.read_bytes() != data:
                 raise ValueError('Concurrent build record conflict.')
-        else:
-            os.replace(name, path)
         if path.read_bytes() != data:
             raise ValueError('Build record readback failed.')
     finally:
@@ -61,7 +70,8 @@ def records(root=None):
     rows = []
     for path in sorted(folder.glob('*.json')):
         item = load(path)
-        if (item.get('schema') != 'toprert-development-metadata-build-v1'
+        if (type(item) is not dict
+                or item.get('schema') != 'toprert-development-metadata-build-v1'
                 or item.get('identity') != gen.entry_for(item['recipe'])
                 or path.stem != item['identity']['recipe_sha256']):
             raise ValueError('Custom build record has inconsistent provenance.')

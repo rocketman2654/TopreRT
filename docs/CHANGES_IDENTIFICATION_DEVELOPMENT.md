@@ -14,6 +14,11 @@ Unreleased changes after rc3/rc4; existing public tags/assets remain unchanged.
   the shared Development presentation; update and Observer operation guards remain.
 - Versioned catalog snapshots are immutable. Custom records stay under output;
   public source snapshots exclude firmware, local records and environments.
+- PR review follow-up: saved artifacts use atomic publication that cannot replace
+  another writer's file. Identical concurrent content is accepted; different
+  content is preserved and reported as a conflict. Malformed non-object custom
+  records stop inspection before any device query instead of raising an uncaught
+  attribute error. Firmware generation sources and build IDs are unchanged.
 
 [User-confirmed GUI RT and SpaceFn results](HARDWARE_IDENTIFICATION_20261018.md)
 cover one PD-KB800W and the named settings. SpaceFn input-order delay is retained

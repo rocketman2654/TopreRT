@@ -1,6 +1,6 @@
 # TopreRT
 
-**TopreRT v0.3.0-rc5 — prerelease.** Previous rc3/rc4 tags and assets remain unchanged.
+**TopreRT v0.3.0-rc6 — prerelease.** Previous rc3/rc4/rc5 tags and assets remain unchanged.
 **Rapid Trigger toolkit for REALFORCE R3S and HHKB Professional Hybrid / Hybrid Type-S**
 
 TopreRT is an unofficial Windows toolkit for creating Rapid Trigger firmware for supported REALFORCE R3S and HHKB keyboards. It validates user-supplied stock firmware, provides an interface for configuring RT or HHKB HOLD/SpaceFn, and includes a live sensor Observer. **R3S files are installed through official REALFORCE software; HHKB firmware is installed by the updater inside TopreRT.**
@@ -15,11 +15,11 @@ TopreRT is an unofficial Windows toolkit for creating Rapid Trigger firmware for
 
 ## Project Status
 
-Release notes: [v0.3.0-rc5](docs/RELEASE_NOTES_v0.3.0-rc5.md). Identification investigation notes retain their Development history.
+Release notes: [v0.3.0-rc6](docs/RELEASE_NOTES_v0.3.0-rc6.md). Identification investigation notes retain their Development history.
 
 Development displays [local operation history](docs/LOCAL_INSTALL_HISTORY_DEVELOPMENT.md) separately from device inspection. History never establishes the connected device's current firmware or exact version. Inspect firmware reads HHKB metadata when present, displaying family, build ID, channel and catalog version. [Development generation](docs/METADATA_GENERATION_DEVELOPMENT.md) embeds deterministic metadata in RT/HOLD output and stores portable recipes; matching RT recipes show release/re-press settings explicitly as recipe information, not settings readback. Versioned catalogs are bundled separately from custom local records. GUI-generated Golden RT B33E6ADF (R32/P32) and SpaceFn HOLD A96B4BA0 (250 ms, one slot) passed user-confirmed installation, reconnect, identification and functional checks on one PD-KB800W. See [hardware coverage and limits](docs/HARDWARE_IDENTIFICATION_20261018.md). Default RT 81B8EDEB has not been hardware-tested. Detect searches USB devices and preserves the manual selection when both families are connected.
 
-**Current app version: v0.3.0-rc5.** This is a prerelease source distribution for Windows. The earlier stock A0.48 restore/RT R60/P90 cycle and the latest GUI-generated RT/SpaceFn checks cover one PD-KB800W. Other models, other HOLD configurations, interrupted-update recovery and clean-PC setup need separate validation. Published rc3/rc4 assets are preserved.
+**Current app version: v0.3.0-rc6.** This is a prerelease source distribution for Windows. The earlier stock A0.48 restore/RT R60/P90 cycle and the latest GUI-generated RT/SpaceFn checks cover one PD-KB800W. Other models, other HOLD configurations, interrupted-update recovery and clean-PC setup need separate validation. Published rc3/rc4/rc5 assets are preserved.
 
 | Device | Firmware | RT Core | Observer / Writer |
 |---|---|---|---|
@@ -49,7 +49,7 @@ Development displays [local operation history](docs/LOCAL_INSTALL_HISTORY_DEVELO
 ## Requirements
 
 * **OS:** Windows 10 / 11
-* **Python:** Python 3.12 recommended/tested, with Windows Python Launcher `py` and Tkinter
+* **Python:** Python 3.12 recommended, with Tkinter. Setup also detects Python 3.10+ through `py`, `python`, or `python3`. See the rc6 release notes for tested versions.
 * **Libraries:** `hidapi`, `Tkinter` (included with standard Windows Python installers)
 
 Install dependencies using:
@@ -61,6 +61,8 @@ Install dependencies using:
 
 1. Extract the complete package to a writable folder. Install **Python 3.12 with the Python Launcher and Tkinter**.
 2. Run `Setup_Demo.bat` in that folder once. It installs USB dependencies into the app's private environment. Start the app with `Start_TopreRT_GUI.bat`.
+
+Setup prefers Python 3.12, then tries `py -3`, `python` and `python3`. To select an interpreter, run `.\Setup_Demo.bat -PythonPath "C:\path\to\python.exe"` with your actual path. Python 3.10+ and Tkinter are required. Dependency installation errors are reported separately from Python discovery failures.
 3. Connect the keyboard by USB and select its family. Supply your supported **original stock firmware**: model-specific R3S A0.12 `.rfb`, or HHKB PD-KB800W A0.48 `.hfb`. Do not select an earlier TopreRT output as the stock input. Firmware files are not included.
 4. Choose the installation path below. Changing a profile or pressing **Check Settings** does not change the keyboard.
 
@@ -254,4 +256,4 @@ TopreRT is an open-source, unofficial firmware modification tool. Modifying keyb
 
 ## App version versus firmware build
 
-The app is v0.3.0-rc5. Generated firmware still carries the reviewed Development family/build IDs; the existing generator, template and catalogs are unchanged. Development output filenames/inspection labels are intentional, not a failed app update. The app release number is not assigned retrospectively to earlier firmware. Inspect firmware reads metadata only when that firmware includes it. Existing firmware does not need reinstalling just to update the PC app.
+The app is v0.3.0-rc6. Generated firmware still carries the reviewed Development family/build IDs; the existing generator, template and catalogs are unchanged. Development output filenames/inspection labels are intentional, not a failed app update. The app release number is not assigned retrospectively to earlier firmware. Inspect firmware reads metadata only when that firmware includes it. Existing firmware does not need reinstalling just to update the PC app.

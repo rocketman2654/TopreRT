@@ -61,3 +61,5 @@ try {
     Remove-Item -LiteralPath (Join-Path $fixtureDir 'Setup_Demo.bat'), (Join-Path $fixtureDir 'Setup_Demo.ps1')
     Remove-Item -LiteralPath $fixtureDir
 }
+# The fixture deliberately returned 7; do not leak it to a CI shell wrapper.
+$global:LASTEXITCODE = 0

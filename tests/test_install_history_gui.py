@@ -151,7 +151,7 @@ class HistoryIntegrationTests(unittest.TestCase):
                 self.assertEqual(root.firmware_identification.exact_version_available,False)
                 root.platform.set(gui.PLAT_R3S)
                 self.assertIn('No local record',root.local_history.get())
-                self.assertIn('v0.3.0-rc5',root.title())
+                self.assertIn('v0.3.0-rc6',root.title())
             finally: root.destroy()
 
 

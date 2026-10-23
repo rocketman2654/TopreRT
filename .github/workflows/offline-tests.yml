@@ -3,7 +3,7 @@ on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
 jobs:
-  windows:
+  python-tests:
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -23,3 +23,14 @@ jobs:
       - name: Run offline tests including hidden GUI widgets (no hardware)
         shell: powershell
         run: .\.venv\Scripts\python.exe -B -m unittest discover -s tests -v
+  windows:
+    runs-on: windows-latest
+    needs: python-tests
+    if: ${{ always() }}
+    steps:
+      - name: Require both Python runtime checks
+        shell: powershell
+        run: |
+          if ('${{ needs.python-tests.result }}' -ne 'success') {
+            throw 'Both Python runtime checks must pass.'
+          }
